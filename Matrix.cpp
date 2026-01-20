@@ -55,13 +55,15 @@ struct Matrix {
             std::cout << "size mismatch in mult " << lhs.get_dim() << "and" << rhs.get_dim() << std::endl;
         }
 
-        Matrix m = Matrix::zeros(lhs.height, rhs.width);
+        Matrix m = Matrix(lhs.height, rhs.width);
 
-        for (size_t y = 0; y < lhs.height; y++) {
-            for (size_t x = 0; x < rhs.width; x++) {
+        Matrix rhsT = rhs.transposed();
+
+        for (size_t x = 0; x < rhs.width; x++) {
+            for (size_t y = 0; y < lhs.height; y++) {
                 float s = 0;
                 for (size_t i = 0; i < lhs.width; i++) {
-                    s += lhs.at(y, i) * rhs.at(i, x);
+                    s += lhs.at(y, i) * rhsT.at(x, i);
                 }
                 m.at(y, x) = s;
             }
@@ -122,22 +124,24 @@ struct Matrix {
     }
 
     Matrix& transpose() {
-        std::vector<float> old_data = data;
+
+        std::vector<float> out(width * height);
 
         for (size_t y = 0; y < height; y++) {
             for (size_t x = 0; x < width; x++) {
-                data[x * height + y] = old_data[y * width + x];
+                out[x * height + y] = at(y, x);
             }
         }
+        
+        data = std::move(out);
 
         size_t tmp = width;
         width = height;
         height = tmp;
-
         return *this;
     }
 
-    Matrix transposed() {
+    Matrix transposed() const {
         Matrix m = *this;
         return m.transpose();
     }
@@ -158,32 +162,32 @@ struct Matrix {
     }
 };
 
-// naive: 187ms
+// naive: 460ms
+// flip loops (x outer): 435ms
+// transposed rhs: 405ms
 
-// int main() {
-//     Matrix x = Matrix::from_random(2, 2);
-//     std::cout << x << std::endl;
-//     std::cout << x.transposed() << std::endl;
 
-//     Matrix a = Matrix::from_random(1028, 1028);
-//     Matrix b = Matrix::from_random(1028, 1028);
+int main() {
+    Matrix a = Matrix::from_random(1028, 1028);
+    Matrix b = Matrix::from_random(1028, 1028);
 
-//     long long s = 0;
+    long long s = 0;
 
-//     for (int i = 0; i < 10; i++) {
+    for (int i = 0; i < 10; i++) {
 
-//         auto start = std::chrono::steady_clock::now();
-//         a * b;
+        auto start = std::chrono::steady_clock::now();
 
-//         auto end = std::chrono::steady_clock::now();
-//         std::chrono::duration<double, std::milli> ms = end - start;
-//         s += ms.count();
-//     }
+        Matrix c = a * b;
 
-//     std::cout << s / 10.0 << "ms" << std::endl;
+        auto end = std::chrono::steady_clock::now();
+        std::chrono::duration<double, std::milli> ms = end - start;
+        s += ms.count();
+    }
 
-//     // std::cout << a * b << std::endl;
-// }
+    std::cout << s / 10.0 << "ms" << std::endl;
+
+    // std::cout << a * b << std::endl;
+}
 
 /*
     friend Matrix operator*(const Matrix& lhs, const Matrix& rhs) {
