@@ -1,11 +1,12 @@
 // g++ -std=c++23 -g3 -ggdb -O0 -fno-omit-frame-pointer -fno-optimize-sibling-calls -o test.exe FFNN.cpp && test.exe
 // g++ -std=c++23 -g3 -ggdb -O0 -fno-omit-frame-pointer -fno-optimize-sibling-calls -o test.exe FFNN.cpp && gdb test.exe
 
-// g++ -std=c++23 -o test FFNN.cpp && test.exe
+// g++ -std=c++23 -mavx -march=native -O3 -o test FFNN.cpp && test.exe
 
 #include "Matrix.cpp"
 #include <vector>
 #include <iomanip>
+#include <cmath>
 
 enum ActivationFunc {
     linear,
@@ -204,7 +205,7 @@ void train(std::vector<Matrix> inputs, std::vector<Matrix> outputs, FFNN& ffnn, 
     }
 }
 
-int main() {
+void test1() {
     FFNN net = FFNN::from_random(
         {3, 200, 3},
         {ActivationFunc::relu, ActivationFunc::linear},
@@ -223,4 +224,52 @@ int main() {
     outputs.push_back(Matrix(3, 1, {1, 1, 1}));
 
     train(inputs, outputs, net, 10000, 0.01, 0.0001);
+}
+
+void test2() {
+    FFNN net = FFNN::from_random(
+        {2, 4, 1},
+        {ActivationFunc::relu, ActivationFunc::linear},
+        -1.0, 1.0,
+        -1.0, 1.0
+    );
+
+    std::vector<Matrix> inputs;
+    std::vector<Matrix> outputs;
+
+    for (int i = 0; i < 1000; i++) {
+        float x1 = (((float)rand()) / ((float)RAND_MAX)) * 10.0 - 5.0;
+        float x2 = (((float)rand()) / ((float)RAND_MAX)) * 10.0 - 5.0;
+
+        inputs.push_back(Matrix(2, 1, {x1, x2}));
+        outputs.push_back(Matrix(1, 1, { (float)(x1 + x2) / 2.0f }));
+    }
+
+    train(inputs, outputs, net, 500, 0.01, 0.0001);
+}
+
+void test3() {
+    FFNN net = FFNN::from_random(
+        {2, 4, 1},
+        {ActivationFunc::relu, ActivationFunc::linear},
+        -1.0, 1.0,
+        -1.0, 1.0
+    );
+
+    std::vector<Matrix> inputs;
+    std::vector<Matrix> outputs;
+
+    for (int i = 0; i < 1000; i++) {
+        float x1 = (((float)rand()) / ((float)RAND_MAX)) * 10.0 - 5.0;
+        float x2 = (((float)rand()) / ((float)RAND_MAX)) * 10.0 - 5.0;
+
+        inputs.push_back(Matrix(2, 1, {x1, x2}));
+        outputs.push_back(Matrix(1, 1, { sin((x1 + x2)) }));
+    }
+
+    train(inputs, outputs, net, 5000, 0.01, 0.0005);
+}
+
+int main() {
+    test3();
 }
