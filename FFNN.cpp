@@ -189,6 +189,8 @@ struct FFNN {
 };
 
 void train(std::vector<Matrix> inputs, std::vector<Matrix> outputs, FFNN& ffnn, size_t generations, float lr_start = 0.005, float lr_end = 0.005 ) {
+    float prev_cost = std::numeric_limits<float>::max();
+
     for (int gen = 0; gen < generations; gen++) {
         // lerp between lr_start and lr_end
         float lr = lr_start + (lr_end - lr_start) * ((float)gen / (float)(generations - 1));
@@ -201,8 +203,13 @@ void train(std::vector<Matrix> inputs, std::vector<Matrix> outputs, FFNN& ffnn, 
             ffnn.backwards(inputs[i], outputs[i], lr);
         }
 
-        std::cout << "Finished generation " << gen + 1 << " || Cost = " << std::setprecision(4) << (total_cost / inputs.size()) << std::endl;
+        std::cout << "Finished generation " << gen + 1 << " || Cost = " << std::fixed << std::setprecision(4) << (total_cost / inputs.size()) << " || Percentage improvement: " << ((prev_cost - (total_cost / inputs.size())) / prev_cost) * 100.0f << "%" << std::endl;
+
+        prev_cost = total_cost / inputs.size();
     }
+
+
+
 }
 
 void test1() {
@@ -250,8 +257,8 @@ void test2() {
 
 void test3() {
     FFNN net = FFNN::from_random(
-        {2, 4, 1},
-        {ActivationFunc::relu, ActivationFunc::linear},
+        {2, 4, 4, 1},
+        {ActivationFunc::relu, ActivationFunc::relu, ActivationFunc::linear},
         -1.0, 1.0,
         -1.0, 1.0
     );
@@ -264,9 +271,8 @@ void test3() {
         float x2 = (((float)rand()) / ((float)RAND_MAX)) * 10.0 - 5.0;
 
         inputs.push_back(Matrix(2, 1, {x1, x2}));
-        outputs.push_back(Matrix(1, 1, { sin((x1 + x2)) }));
+        outputs.push_back(Matrix(1, 1, { sin((float)(x1 + x2)) }));
     }
-
     train(inputs, outputs, net, 5000, 0.01, 0.0005);
 }
 
