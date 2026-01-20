@@ -1,0 +1,9 @@
+{
+    "files.associations": {
+        "type_traits": "cpp",
+        "cstddef": "cpp",
+        "cstdint": "cpp",
+        "cstring": "cpp",
+        "xtr1common": "cpp"
+    }
+}
