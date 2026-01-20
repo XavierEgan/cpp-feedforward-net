@@ -10,6 +10,7 @@
 #include <chrono>
 #include <vector>
 #include <string>
+#include "Eigen/Dense"
 
 struct Matrix {
     size_t width;
@@ -167,27 +168,44 @@ struct Matrix {
 // transposed rhs: 405ms
 
 
-// int main() {
-//     Matrix a = Matrix::from_random(1028, 1028);
-//     Matrix b = Matrix::from_random(1028, 1028);
+int main() {
+    Matrix a = Matrix::from_random(1028, 1028);
+    Matrix b = Matrix::from_random(1028, 1028);
 
-//     long long s = 0;
+    long long s = 0;
 
-//     for (int i = 0; i < 10; i++) {
+    for (int i = 0; i < 10; i++) {
 
-//         auto start = std::chrono::steady_clock::now();
+        auto start = std::chrono::steady_clock::now();
 
-//         Matrix c = a * b;
+        Matrix c = a * b;
 
-//         auto end = std::chrono::steady_clock::now();
-//         std::chrono::duration<double, std::milli> ms = end - start;
-//         s += ms.count();
-//     }
+        auto end = std::chrono::steady_clock::now();
+        std::chrono::duration<double, std::milli> ms = end - start;
+        s += ms.count();
+    }
 
-//     std::cout << s / 10.0 << "ms" << std::endl;
+    std::cout << s / 10.0 << "ms" << std::endl;
 
-//     // std::cout << a * b << std::endl;
-// }
+
+    Eigen::MatrixXf ea(1028, 1028);
+    Eigen::MatrixXf eb(1028, 1028);
+
+    s = 0;
+
+    for (int i = 0; i < 10; i++) {
+
+        auto start = std::chrono::steady_clock::now();
+
+        Eigen::MatrixXf ec = ea * eb;
+
+        auto end = std::chrono::steady_clock::now();
+        std::chrono::duration<double, std::milli> ms = end - start;
+        s += ms.count();
+    }
+
+    std::cout << s / 10.0 << "ms" << std::endl;
+}
 
 /*
     friend Matrix operator*(const Matrix& lhs, const Matrix& rhs) {

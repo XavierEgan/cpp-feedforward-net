@@ -3,10 +3,11 @@
 
 // g++ -std=c++23 -mavx -march=native -O3 -o test FFNN.cpp && test.exe
 
-#include "Matrix.cpp"
+#include "Eigen/Dense"
 #include <vector>
 #include <iomanip>
 #include <cmath>
+#include <iostream>
 
 enum ActivationFunc {
     linear,
@@ -18,8 +19,8 @@ enum CostType {
 };
 
 struct FFNN {
-    std::vector<Matrix> weights;
-    std::vector<Matrix> biases;
+    std::vector<Eigen::MatrixXf> weights;
+    std::vector<Eigen::MatrixXf> biases;
     std::vector<int> layers;
     std::vector<ActivationFunc> activation_funcs;
 
@@ -45,8 +46,8 @@ struct FFNN {
             size_t width = static_cast<size_t>(layers.at(l - 1));
             size_t height = static_cast<size_t>(layers.at(l));
 
-            ffnn.weights.push_back(Matrix::from_random(height, width, lo_weight, hi_weight));
-            ffnn.biases.push_back(Matrix::from_random(height, 1, lo_bias, hi_bias));
+            ffnn.weights.push_back(Eigen::MatrixXf::Random(height, width));
+            ffnn.biases.push_back(Eigen::MatrixXf::Random(height, 1));
         }
 
         return ffnn;
@@ -64,9 +65,9 @@ struct FFNN {
         return 0.0;
     }
 
-    Matrix activate(Matrix m, ActivationFunc af) {
-        for (size_t i = 0; i < m.width * m.height; i++) {
-            m.data[i] = activate(m.data[i], af);
+    Eigen::MatrixXf activate(Eigen::MatrixXf m, ActivationFunc af) {
+        for (int i = 0; i < m.size(); i++) {
+            m.data()[i] = activate(m.data()[i], af);
         }
         return m;
     }
@@ -82,9 +83,9 @@ struct FFNN {
         return 0.0;
     }
 
-    Matrix activate_der(Matrix m, ActivationFunc af) {
-        for (size_t i = 0; i < m.width * m.height; i++) {
-            m.data[i] = activate_der(m.data[i], af);
+    Eigen::MatrixXf activate_der(Eigen::MatrixXf m, ActivationFunc af) {
+        for (int i = 0; i < m.size(); i++) {
+            m.data()[i] = activate_der(m.data()[i], af);
         }
 
         return m;
@@ -101,20 +102,20 @@ struct FFNN {
         return 0.0;
     }
 
-    Matrix cost_der(Matrix a, Matrix y, CostType type) {
-        Matrix c(a.height, 1);
-        for (size_t i = 0; i < a.height; i++) {
-            c.at(i, 0) = cost_der(a.at(i, 0), y.at(i, 0), type);
+    Eigen::MatrixXf cost_der(Eigen::MatrixXf a, Eigen::MatrixXf y, CostType type) {
+        Eigen::MatrixXf c(a.rows(), 1);
+        for (int i = 0; i < a.rows(); i++) {
+            c(i, 0) = cost_der(a(i, 0), y(i, 0), type);
         }
         return c;
     }
 
-    float cost(const Matrix& a, const Matrix& y, CostType type) {
+    float cost(const Eigen::MatrixXf& a, const Eigen::MatrixXf& y, CostType type) {
         switch (type) {
         case CostType::quadratic: {
             float sum = 0.0;
-            for (size_t i = 0; i < a.height; i++) {
-                float diff = a.at(i, 0) - y.at(i, 0);
+            for (int i = 0; i < a.rows(); i++) {
+                float diff = a(i, 0) - y(i, 0);
                 sum += diff * diff;
             }
             return sum / 2.0;
@@ -126,12 +127,12 @@ struct FFNN {
     }
 
 
-    Matrix forward(const Matrix& input) {
-        if (input.width != 1 || input.height != layers[0]) {
+    Eigen::MatrixXf forward(const Eigen::MatrixXf& input) {
+        if (input.cols() != 1 || input.rows() != layers[0]) {
             std::cout << "forward input wrong" << std::endl;
         }
 
-        Matrix cur_layer = activate(weights[0] * input + biases[0], activation_funcs[0]);
+        Eigen::MatrixXf cur_layer = activate(weights[0] * input + biases[0], activation_funcs[0]);
         for(size_t i = 1; i  < layers.size() - 1; i++) {
             cur_layer = activate(weights[i] * cur_layer + biases[i], activation_funcs[i]);
         }
@@ -139,14 +140,14 @@ struct FFNN {
         return cur_layer;
     }
     
-    void backwards(const Matrix& input, const Matrix& expected_out, float lr = 0.00005) {
+    void backwards(const Eigen::MatrixXf& input, const Eigen::MatrixXf& expected_out, float lr = 0.00005) {
         // forward and keep track of z = (wx + b)
-        std::vector<Matrix> zs;
+        std::vector<Eigen::MatrixXf> zs;
         zs.reserve(layers.size() - 1);
 
-        Matrix z = weights[0] * input + biases[0];
+        Eigen::MatrixXf z = weights[0] * input + biases[0];
         zs.push_back(z);
-        Matrix a = activate(z, activation_funcs[0]);
+        Eigen::MatrixXf a = activate(z, activation_funcs[0]);
 
         for (size_t i = 1; i < layers.size() - 1; i++) {
             z = weights[i] * a + biases[i];
@@ -155,28 +156,28 @@ struct FFNN {
         }
 
         // output layer delta
-        Matrix sigma_prime = activate_der(zs.back(), activation_funcs.back());
-        Matrix partial_derivatives = cost_der(a, expected_out, CostType::quadratic);
-        Matrix cur_error = Matrix::hadamard_product(sigma_prime, partial_derivatives);
+        Eigen::MatrixXf sigma_prime = activate_der(zs.back(), activation_funcs.back());
+        Eigen::MatrixXf partial_derivatives = cost_der(a, expected_out, CostType::quadratic);
+        Eigen::MatrixXf cur_error = sigma_prime.cwiseProduct(partial_derivatives);
 
         // backprop through weight layers (0 .. weights.size()-1)
         for (int l = (int)weights.size() - 1; l >= 0; --l) {
             // compute error for previous layer using CURRENT (pre-update) weights
-            Matrix next_error;
+            Eigen::MatrixXf next_error;
             if (l > 0) {
-                Matrix sp = activate_der(zs[l - 1], activation_funcs[l - 1]);
-                next_error = Matrix::hadamard_product(weights[l].transposed() * cur_error, sp);
+                Eigen::MatrixXf sp = activate_der(zs[l - 1], activation_funcs[l - 1]);
+                next_error = (weights[l].transpose() * cur_error).cwiseProduct(sp);
             }
 
-            Matrix prev_a = (l == 0) ? input : activate(zs[l - 1], activation_funcs[l - 1]);
+            Eigen::MatrixXf prev_a = (l == 0) ? input : activate(zs[l - 1], activation_funcs[l - 1]);
 
-            for (size_t i = 0; i < biases[l].height; i++) {
-                biases[l].at(i, 0) -= lr * cur_error.at(i, 0);
+            for (size_t i = 0; i < biases[l].rows(); i++) {
+                biases[l].coeffRef(i, 0) -= lr * cur_error.coeff(i, 0);
             }
 
-            for (size_t y = 0; y < weights[l].height; y++) {
-                for (size_t x = 0; x < weights[l].width; x++) {
-                    weights[l].at(y, x) -= lr * cur_error.at(y, 0) * prev_a.at(x, 0);
+            for (size_t y = 0; y < weights[l].rows(); y++) {
+                for (size_t x = 0; x < weights[l].cols(); x++) {
+                    weights[l].coeffRef(y, x) -= lr * cur_error.coeff(y, 0) * prev_a.coeff(x, 0);
                 }
             }
 
@@ -188,7 +189,7 @@ struct FFNN {
     FFNN() {}
 };
 
-void train(std::vector<Matrix> inputs, std::vector<Matrix> outputs, FFNN& ffnn, size_t generations, float lr_start = 0.005, float lr_end = 0.005 ) {
+void train(std::vector<Eigen::MatrixXf> inputs, std::vector<Eigen::MatrixXf> outputs, FFNN& ffnn, size_t generations, float lr_start = 0.005, float lr_end = 0.005 ) {
     float prev_cost = std::numeric_limits<float>::max();
 
     for (int gen = 0; gen < generations; gen++) {
@@ -197,7 +198,7 @@ void train(std::vector<Matrix> inputs, std::vector<Matrix> outputs, FFNN& ffnn, 
 
         float total_cost = 0;
         for (int i = 0; i < inputs.size(); i++) {
-            Matrix out = ffnn.forward(inputs[i]);
+            Eigen::MatrixXf out = ffnn.forward(inputs[i]);
             total_cost += ffnn.cost(out, outputs[i], CostType::quadratic);
 
             ffnn.backwards(inputs[i], outputs[i], lr);
@@ -212,27 +213,6 @@ void train(std::vector<Matrix> inputs, std::vector<Matrix> outputs, FFNN& ffnn, 
 
 }
 
-void test1() {
-    FFNN net = FFNN::from_random(
-        {3, 200, 3},
-        {ActivationFunc::relu, ActivationFunc::linear},
-        0.0, 1.0,
-        0.0, 1.0
-    );
-
-    std::vector<Matrix> inputs;
-    inputs.push_back(Matrix(3, 1, {1, 0, 0}));
-    inputs.push_back(Matrix(3, 1, {0, 1, 0}));
-    inputs.push_back(Matrix(3, 1, {0, 0, 1}));
-
-    std::vector<Matrix> outputs;
-    outputs.push_back(Matrix(3, 1, {1, 0, 0}));
-    outputs.push_back(Matrix(3, 1, {1, 1, 0}));
-    outputs.push_back(Matrix(3, 1, {1, 1, 1}));
-
-    train(inputs, outputs, net, 10000, 0.01, 0.0001);
-}
-
 void test2() {
     FFNN net = FFNN::from_random(
         {2, 4, 1},
@@ -241,15 +221,15 @@ void test2() {
         -1.0, 1.0
     );
 
-    std::vector<Matrix> inputs;
-    std::vector<Matrix> outputs;
+    std::vector<Eigen::MatrixXf> inputs;
+    std::vector<Eigen::MatrixXf> outputs;
 
     for (int i = 0; i < 1000; i++) {
         float x1 = (((float)rand()) / ((float)RAND_MAX)) * 10.0 - 5.0;
         float x2 = (((float)rand()) / ((float)RAND_MAX)) * 10.0 - 5.0;
 
-        inputs.push_back(Matrix(2, 1, {x1, x2}));
-        outputs.push_back(Matrix(1, 1, { (float)(x1 + x2) / 2.0f }));
+        inputs.push_back((Eigen::MatrixXf(2, 1) << x1, x2).finished());
+        outputs.push_back((Eigen::MatrixXf(1, 1) << (float)(x1 + x2) / 2.0f).finished());
     }
 
     train(inputs, outputs, net, 500, 0.01, 0.0001);
@@ -263,15 +243,15 @@ void test3() {
         -1.0, 1.0
     );
 
-    std::vector<Matrix> inputs;
-    std::vector<Matrix> outputs;
+    std::vector<Eigen::MatrixXf> inputs;
+    std::vector<Eigen::MatrixXf> outputs;
 
     for (int i = 0; i < 1000; i++) {
         float x1 = (((float)rand()) / ((float)RAND_MAX)) * 10.0 - 5.0;
         float x2 = (((float)rand()) / ((float)RAND_MAX)) * 10.0 - 5.0;
 
-        inputs.push_back(Matrix(2, 1, {x1, x2}));
-        outputs.push_back(Matrix(1, 1, { sin((float)(x1 + x2)) }));
+        inputs.push_back((Eigen::MatrixXf(2, 1) << x1, x2).finished());
+        outputs.push_back((Eigen::MatrixXf(1, 1) << sin((float)(x1 + x2))).finished());
     }
     train(inputs, outputs, net, 5000, 0.01, 0.0005);
 }
