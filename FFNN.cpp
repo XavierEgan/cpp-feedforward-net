@@ -138,7 +138,7 @@ struct FFNN {
         return cur_layer;
     }
     
-    void backwards(const Matrix& input, const Matrix& expected_out, float lr = 0.005) {
+    void backwards(const Matrix& input, const Matrix& expected_out, float lr = 0.00005) {
         // forward and keep track of z = (wx + b)
         std::vector<Matrix> zs;
         zs.reserve(layers.size() - 1);
@@ -160,26 +160,26 @@ struct FFNN {
 
         // backprop through weight layers (0 .. weights.size()-1)
         for (int l = (int)weights.size() - 1; l >= 0; --l) {
-            // compute prev activation (a_{l})
+            // compute error for previous layer using CURRENT (pre-update) weights
+            Matrix next_error;
+            if (l > 0) {
+                Matrix sp = activate_der(zs[l - 1], activation_funcs[l - 1]);
+                next_error = Matrix::hadamard_product(weights[l].transposed() * cur_error, sp);
+            }
+
             Matrix prev_a = (l == 0) ? input : activate(zs[l - 1], activation_funcs[l - 1]);
 
-            // update biases[l]
             for (size_t i = 0; i < biases[l].height; i++) {
                 biases[l].at(i, 0) -= lr * cur_error.at(i, 0);
             }
 
-            // update weights[l]
             for (size_t y = 0; y < weights[l].height; y++) {
                 for (size_t x = 0; x < weights[l].width; x++) {
                     weights[l].at(y, x) -= lr * cur_error.at(y, 0) * prev_a.at(x, 0);
                 }
             }
 
-            // compute error for previous layer (skip when l == 0)
-            if (l > 0) {
-                Matrix sp = activate_der(zs[l - 1], activation_funcs[l - 1]);
-                cur_error = Matrix::hadamard_product(weights[l].transposed() * cur_error, sp);
-            }
+            if (l > 0) cur_error = next_error;
         }
     }
 
@@ -187,24 +187,27 @@ struct FFNN {
     FFNN() {}
 };
 
-void train(std::vector<Matrix> inputs, std::vector<Matrix> outputs, FFNN& ffnn, size_t generations) {
+void train(std::vector<Matrix> inputs, std::vector<Matrix> outputs, FFNN& ffnn, size_t generations, float lr_start = 0.005, float lr_end = 0.005 ) {
     for (int gen = 0; gen < generations; gen++) {
+        // lerp between lr_start and lr_end
+        float lr = lr_start + (lr_end - lr_start) * ((float)gen / (float)(generations - 1));
+
         float total_cost = 0;
         for (int i = 0; i < inputs.size(); i++) {
             Matrix out = ffnn.forward(inputs[i]);
             total_cost += ffnn.cost(out, outputs[i], CostType::quadratic);
 
-            ffnn.backwards(inputs[i], outputs[i]);
+            ffnn.backwards(inputs[i], outputs[i], lr);
         }
 
-        std::cout << "Finished generation " << gen << " || Cost = " << std::setprecision(4) << (total_cost / inputs.size()) << std::endl;
+        std::cout << "Finished generation " << gen + 1 << " || Cost = " << std::setprecision(4) << (total_cost / inputs.size()) << std::endl;
     }
 }
 
 int main() {
     FFNN net = FFNN::from_random(
-        {3, 20, 3},
-        {ActivationFunc::relu, ActivationFunc::relu},
+        {3, 200, 3},
+        {ActivationFunc::relu, ActivationFunc::linear},
         0.0, 1.0,
         0.0, 1.0
     );
@@ -219,5 +222,5 @@ int main() {
     outputs.push_back(Matrix(3, 1, {1, 1, 0}));
     outputs.push_back(Matrix(3, 1, {1, 1, 1}));
 
-    train(inputs, outputs, net, 10);
+    train(inputs, outputs, net, 10000, 0.01, 0.0001);
 }
