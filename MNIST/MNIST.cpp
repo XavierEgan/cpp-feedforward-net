@@ -2,6 +2,7 @@
 
 #include "../FFNN.cpp"
 #include <fstream>
+#include <cmath>
 
 struct Dataset {
     std::vector<Eigen::MatrixXf> images;
@@ -19,23 +20,24 @@ Dataset read_data(const std::string& data_loc) {
 
     std::vector<Eigen::MatrixXf> images;
     std::vector<Eigen::MatrixXf> labels;
+    std::getline(data_file, line); // remvoe the header line
 
     while (std::getline(data_file, line)) {
         Eigen::MatrixXf label = Eigen::MatrixXf::Zero(10, 1);
         Eigen::MatrixXf image(784, 1);
 
+        std::replace(line.begin(), line.end(), ',', ' ');
         std::istringstream line_stream(line);
-        std::string dummy;
 
         int lab;
         line_stream >> lab;
         label(lab, 0) = 1.0f;
 
-        line_stream >> dummy;
-
         for (int i = 0; i < 784; i++) {
-            line_stream >> image(i, 0);
-            line_stream >> dummy;
+            float pixel = 0;
+            line_stream >> pixel;
+            pixel /= 255;
+            image(i, 0) = pixel;
         }
 
         images.push_back(image);
@@ -50,24 +52,47 @@ int main() {
 
     FFNN ffnn = FFNN::from_random(
         {784, 256, 128, 64, 10},
-        {ActivationFunc::relu,  ActivationFunc::relu, ActivationFunc::relu, ActivationFunc::linear}
+        {ActivationFunc::relu,  ActivationFunc::relu, ActivationFunc::relu, ActivationFunc::relu}
     );
 
-    const int num_generations = 1000;
-    double lr = 0.005;
-    const double decay = 0.999;
-    const int batch_size = 10;
+    const int max_generations = 3000;
+    const float target_cost = 0.0013;
 
-    for (int gen = 0; gen < 1000; gen++) {
-        auto avg_cost = ffnn.gradient_descent(train_data.images, train_data.labels, batch_size, lr);
+    double lr = 0.5;
+    const double min_lr = 0.005;
+    const double decay = 0.9992;
+    const int batch_size = 1000;
+
+    int gen = 0;
+    float avg_cost = 1000.0f;
+    while (avg_cost > target_cost and gen < max_generations) {
+        avg_cost = ffnn.gradient_descent(train_data.images, train_data.labels, batch_size, lr);
         lr *= decay;
+        lr = std::max(lr, min_lr);
 
-        std::cout << "Generation " << gen << "  Avg Cost: " << avg_cost << "  lr: " << lr << std::endl;
+        std::cout << "Generation " << gen + 1 << "  Avg Cost: " << avg_cost << "  lr: " << lr << std::endl;
+        gen++;
     }
 
     // check to see how good our model is
     int total_right = 0;
-    for (int i = 0; i < test_data.images.size(); i++) {
-        
+    for (int d = 0; d < test_data.images.size(); d++) {
+        int cor_ans = -1;
+        for (int i = 0; i < 10; i++) {
+            if (test_data.labels.at(d)(i, 0) > .9) {
+                cor_ans = i;
+                break;
+            }
+        }
+
+        auto res = ffnn.forward(test_data.images.at(d));
+        for (int i = 0; i < 10; i++) {
+            if (round(res.maxCoeff()) == 1 && i == cor_ans) {
+                total_right += 1;
+                break;
+            };
+        }
     }
+
+    std::cout << "Total test correct: " << total_right << " Percentage right: " << (static_cast<float>(total_right) / static_cast<float>(test_data.images.size())) * 100.0f << "%" << std::endl;
 }
