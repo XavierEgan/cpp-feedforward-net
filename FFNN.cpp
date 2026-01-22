@@ -173,7 +173,7 @@ struct FFNN {
         return {weight_gradients, bias_gradients, cost(prev_a, target)};
     }
 
-    float gradient_descent(const std::vector<Eigen::MatrixXf>& inputs, const std::vector<Eigen::MatrixXf>& targets, int batches = -1, float lr = 0.005f) {
+    float gradient_descent(const std::vector<Eigen::MatrixXf>& inputs, const std::vector<Eigen::MatrixXf>& targets, int batch_size = -1, float lr = 0.005f) {
         if (inputs.empty()) {
             throw std::invalid_argument("gradient_descent: inputs must be non-empty");
         }
@@ -183,7 +183,7 @@ struct FFNN {
 
         const int n =  inputs.size();
 
-        if (batches <= 0) batches = n;
+        if (batch_size <= 0) batch_size = n;
 
         std::vector<Eigen::MatrixXf> total_weight_gradient;
         std::vector<Eigen::MatrixXf> total_bias_gradient;
@@ -194,9 +194,9 @@ struct FFNN {
         
         static thread_local std::mt19937 rng(std::random_device{}());
 
-        if (batches < n) {
+        if (batch_size < n) {
             std::shuffle(indices.begin(), indices.end(), rng);
-            indices.resize(batches);
+            indices.resize(batch_size);
         }
         
         for (int idx : indices) {
@@ -215,11 +215,11 @@ struct FFNN {
 
         // update weights and biases
         for (int l = 1; l < depth; l++) {
-            get_weight(l) -= (lr / batches) * total_weight_gradient.at(l - 1);
-            get_bias(l) -= (lr / batches) * total_bias_gradient.at(l - 1);
+            get_weight(l) -= (lr / batch_size) * total_weight_gradient.at(l - 1);
+            get_bias(l) -= (lr / batch_size) * total_bias_gradient.at(l - 1);
         }
 
-        return total_cost / batches;
+        return total_cost / batch_size;
     }
 
     // gets the weight matrix connecting l-1 to l
@@ -259,9 +259,9 @@ struct FFNN {
     }
 };
 
-void train(FFNN& ffnn, const std::vector<Eigen::MatrixXf>& inputs, const std::vector<Eigen::MatrixXf>& targets, int generations, int batches = -1, double lr = 0.005f, double decay = .999) {
+void train(FFNN& ffnn, const std::vector<Eigen::MatrixXf>& inputs, const std::vector<Eigen::MatrixXf>& targets, int generations, int batch_size = -1, double lr = 0.005f, double decay = .999) {
     for (int gen = 0; gen < generations; gen++) {
-        float avg_cost = ffnn.gradient_descent(inputs, targets, batches, lr);
+        float avg_cost = ffnn.gradient_descent(inputs, targets, batch_size, lr);
 
         std::cout << "Generation " << gen << "  Avg Cost: " << avg_cost << "  lr: " << lr << std::endl;
 
@@ -303,8 +303,8 @@ void test2() {
     train(ffnn, inputs, targets, 500, -1, 0.0001, .999);
 }
 
-int main() {
-    test2();
+// int main() {
+//     test2();
 
-    return 0;
-}
+//     return 0;
+// }
