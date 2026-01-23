@@ -3,6 +3,7 @@
 #include "../FFNN.cpp"
 #include <fstream>
 #include <cmath>
+#include <chrono>
 
 struct Dataset {
     std::vector<Eigen::MatrixXf> images;
@@ -58,19 +59,24 @@ int main() {
     const int max_generations = 3000;
     const float target_cost = 0.0013;
 
-    double lr = 0.5;
-    const double min_lr = 0.005;
+    double lr = 1.0;
+    const double min_lr = 0.05;
     const double decay = 0.9992;
-    const int batch_size = 1000;
+    const int batch_size = 10000;
 
     int gen = 0;
     float avg_cost = 1000.0f;
+    auto start_time = std::chrono::high_resolution_clock::now();
     while (avg_cost > target_cost and gen < max_generations) {
+        start_time = std::chrono::high_resolution_clock::now();
+
         avg_cost = ffnn.gradient_descent(train_data.images, train_data.labels, batch_size, lr);
         lr *= decay;
         lr = std::max(lr, min_lr);
 
-        std::cout << "Generation " << gen + 1 << "  Avg Cost: " << avg_cost << "  lr: " << lr << std::endl;
+        auto end_time = std::chrono::high_resolution_clock::now();
+        std::chrono::duration<double> elapsed = end_time - start_time;
+        std::cout << "Generation " << gen + 1 << "  Avg Cost: " << avg_cost << "  lr: " << lr << "  Generation Time: " << elapsed.count() << " seconds" << std::endl;
         gen++;
     }
 

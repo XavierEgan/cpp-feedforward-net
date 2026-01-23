@@ -2,7 +2,7 @@
 // g++ -std=c++23 -g3 -ggdb -O0 -fno-omit-frame-pointer -fno-optimize-sibling-calls -o test.exe FFNN.cpp && gdb test.exe
 
 // g++ -std=c++23 -march=native -O3 -o test FFNN.cpp && test.exe
-// g++ -std=c++23 -march=native -O3 -o test FFNN.cpp && ./test
+// g++ -std=c++23 -march=native -DNDEBUG -O3 -o test FFNN.cpp && ./test
 
 #include "Eigen/Dense"
 #include <vector>
@@ -12,6 +12,7 @@
 #include <stdexcept>
 #include <algorithm>
 #include <random>
+#include <numeric>
 
 
 enum ActivationFunc {
@@ -69,7 +70,7 @@ struct FFNN {
         return ffnn;
     }
 
-    Eigen::MatrixXf activate(Eigen::MatrixXf x, ActivationFunc func) {
+    Eigen::MatrixXf activate(const Eigen::MatrixXf& x, ActivationFunc func) {
         switch (func) {
             case linear:
                 return x;
@@ -80,7 +81,7 @@ struct FFNN {
         }
     }
 
-    Eigen::MatrixXf activate_der(Eigen::MatrixXf x, ActivationFunc func) {
+    Eigen::MatrixXf activate_der(const Eigen::MatrixXf& x, ActivationFunc func) {
         switch (func) {
             case linear:
                 return x.unaryExpr([](float v) -> float { return 1.0; });
@@ -113,9 +114,12 @@ struct FFNN {
         return prev_a;
     }
 
-    BackpropResult backpropogate(const Eigen::MatrixXf& input, const Eigen::MatrixXf& target, CostType cost_type = CostType::quadratic) {
+    void backpropogate(const Eigen::MatrixXf& input, const Eigen::MatrixXf& target, BackpropResult& result, CostType cost_type = CostType::quadratic) {
         std::vector<Eigen::MatrixXf> as;
         std::vector<Eigen::MatrixXf> zs;
+
+        as.reserve(depth);
+        zs.reserve(depth - 1);
 
         as.push_back(input);
 
@@ -143,17 +147,18 @@ struct FFNN {
             return as.at(l);
         };
 
+        result.weight_gradients.clear();
+        result.bias_gradients.clear();
+        result.weight_gradients.reserve(depth - 1);
+        result.bias_gradients.reserve(depth - 1);
+        result.cost = cost(get_a(depth - 1), target);
 
         // get errors in the output layer
         Eigen::MatrixXf output_error = cost_derivative(prev_a, target).cwiseProduct(activate_der(get_z(depth - 1), get_activation_func(depth - 1)));
         Eigen::MatrixXf prev_error = output_error;
-        
-        std::vector<Eigen::MatrixXf> weight_gradients;
-        std::vector<Eigen::MatrixXf> bias_gradients;
 
-        weight_gradients.push_back(output_error * get_a(depth - 2).transpose());
-        bias_gradients.push_back(output_error);
-
+        result.weight_gradients.push_back(output_error * get_a(depth - 2).transpose());
+        result.bias_gradients.push_back(output_error);
         // get error in all future layers
         for (int l = depth - 2; l > 0; l--) {
             // weight connecting this layer to the next
@@ -161,16 +166,14 @@ struct FFNN {
             // and the derivative of the activation function of this layer
             Eigen::MatrixXf this_error = (get_weight(l + 1).transpose() * prev_error).cwiseProduct(activate_der(get_z(l), get_activation_func(l)));
             
-            weight_gradients.push_back(this_error * get_a(l - 1).transpose());
-            bias_gradients.push_back(this_error);
+            result.weight_gradients.push_back(this_error * get_a(l - 1).transpose());
+            result.bias_gradients.push_back(this_error);
             
             prev_error = this_error;
         }
 
-        std::reverse(weight_gradients.begin(), weight_gradients.end());
-        std::reverse(bias_gradients.begin(), bias_gradients.end());
-
-        return {weight_gradients, bias_gradients, cost(prev_a, target)};
+        std::reverse(result.weight_gradients.begin(), result.weight_gradients.end());
+        std::reverse(result.bias_gradients.begin(), result.bias_gradients.end());
     }
 
     float gradient_descent(const std::vector<Eigen::MatrixXf>& inputs, const std::vector<Eigen::MatrixXf>& targets, int batch_size = -1, float lr = 0.005f) {
@@ -185,9 +188,6 @@ struct FFNN {
 
         if (batch_size <= 0) batch_size = n;
 
-        std::vector<Eigen::MatrixXf> total_weight_gradient;
-        std::vector<Eigen::MatrixXf> total_bias_gradient;
-
         float total_cost = 0.0;
         std::vector<int> indices(n);
         std::iota(indices.begin(), indices.end(), 0);
@@ -198,18 +198,22 @@ struct FFNN {
             std::shuffle(indices.begin(), indices.end(), rng);
             indices.resize(batch_size);
         }
-        
+
+        BackpropResult bp_result {{}, {}, 0.0f};
+        std::vector<Eigen::MatrixXf> total_weight_gradient;
+        std::vector<Eigen::MatrixXf> total_bias_gradient;
+
+        for (int i = 0; i < depth - 1; i++) {
+            total_weight_gradient.push_back(Eigen::MatrixXf::Zero(weights.at(i).rows(), weights.at(i).cols()));
+            total_bias_gradient.push_back(Eigen::MatrixXf::Zero(biases.at(i).rows(), biases.at(i).cols()));
+        }
+
         for (int idx : indices) {
-            auto [this_weight_gradient, this_bias_gradient, cost] = backpropogate(inputs.at(idx), targets.at(idx));
-            total_cost += cost;
+            backpropogate(inputs.at(idx), targets.at(idx), bp_result);
+            total_cost += bp_result.cost;
             for (int i = 0; i < depth - 1; i++) {
-                if (total_weight_gradient.size() < this_weight_gradient.size()) {
-                    total_weight_gradient.push_back(this_weight_gradient.at(i));
-                    total_bias_gradient.push_back(this_bias_gradient.at(i));
-                } else {
-                    total_weight_gradient.at(i) += this_weight_gradient.at(i);
-                    total_bias_gradient.at(i) += this_bias_gradient.at(i);
-                }
+                total_weight_gradient.at(i) += bp_result.weight_gradients.at(i);
+                total_bias_gradient.at(i) += bp_result.bias_gradients.at(i);
             }
         }
 
