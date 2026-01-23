@@ -4,6 +4,8 @@
 #include <fstream>
 #include <cmath>
 #include <chrono>
+#include <sstream>    // add
+#include <algorithm>  // add
 
 struct Dataset {
     std::vector<Eigen::MatrixXf> images;
@@ -57,13 +59,13 @@ int main() {
         CostType::binary_cross_entropy
     );
 
-    const int max_generations = 1000;
+    const int max_generations = 5000;
     const float target_cost = 0.0;
 
     double lr = 0.5;
     const double min_lr = 0.005;
     const double decay = 0.999;
-    const int batch_size = 1000;
+    const int batch_size = 500;
 
     int gen = 0;
     float avg_cost = 1000.0f;
@@ -81,25 +83,25 @@ int main() {
         gen++;
     }
 
-    // check to see how good our model is
+    // check to see how good our model is (FIXED accuracy calculation)
     int total_right = 0;
-    for (int d = 0; d < test_data.images.size(); d++) {
-        int cor_ans = -1;
-        for (int i = 0; i < 10; i++) {
-            if (test_data.labels.at(d)(i, 0) > .9) {
-                cor_ans = i;
-                break;
-            }
-        }
+    for (int d = 0; d < (int)test_data.images.size(); d++) {
+        // ground-truth = argmax(label)
+        Eigen::Index gt_r = 0, gt_c = 0;
+        test_data.labels[d].maxCoeff(&gt_r, &gt_c);
+        const Eigen::Index gt = gt_r; // labels are 10x1, so row is the class index
 
-        auto res = ffnn.forward(test_data.images.at(d));
-        for (int i = 0; i < 10; i++) {
-            if (round(res.maxCoeff()) == 1 && i == cor_ans) {
-                total_right += 1;
-                break;
-            };
-        }
+        // prediction = argmax(output)
+        auto res = ffnn.forward(test_data.images[d]); // expected 10x1
+        Eigen::Index pred_r = 0, pred_c = 0;
+        res.maxCoeff(&pred_r, &pred_c);
+        const Eigen::Index pred = pred_r;
+
+        if (pred == gt) total_right++;
     }
 
-    std::cout << "Total test correct: " << total_right << " Percentage right: " << (static_cast<float>(total_right) / static_cast<float>(test_data.images.size())) * 100.0f << "%" << std::endl;
+    std::cout << "Total test correct: " << total_right
+              << " Percentage right: "
+              << (static_cast<float>(total_right) / static_cast<float>(test_data.images.size())) * 100.0f
+              << "%" << std::endl;
 }
