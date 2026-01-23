@@ -17,11 +17,14 @@
 
 enum ActivationFunc {
     linear,
-    relu
+    relu,
+    relu_clipped,
+    sigmoid
 };
 
 enum CostType {
-    quadratic
+    quadratic,
+    binary_cross_entropy
 };
 
 struct BackpropResult {
@@ -36,8 +39,11 @@ struct FFNN {
     std::vector<ActivationFunc> activation_functions;
     std::vector<Eigen::MatrixXf> weights;
     std::vector<Eigen::MatrixXf> biases;
+    CostType cost_type;
 
-    static FFNN from_random(std::vector<size_t> network_shape, std::vector<ActivationFunc> activation_funcs) {
+    static constexpr float kProbEps = 1e-7f;
+
+    static FFNN from_random(std::vector<size_t> network_shape, std::vector<ActivationFunc> activation_funcs, CostType cost_type = CostType::quadratic) {
         FFNN ffnn;
 
         if (network_shape.size() != activation_funcs.size() + 1) {
@@ -57,6 +63,7 @@ struct FFNN {
         ffnn.depth = network_shape.size();
         ffnn.activation_functions = activation_funcs;
         ffnn.network_shape = network_shape;
+        ffnn.cost_type = cost_type;
 
         // weights = output x input
         // He-style scaling helps keep activations/gradients stable for ReLU nets.
@@ -76,6 +83,10 @@ struct FFNN {
                 return x;
             case relu:
                 return x.unaryExpr([](float v) -> float { return std::fmax(0.0f, v); });
+            case relu_clipped:
+                return x.unaryExpr([](float v) -> float { return std::fmax(0.0f, (std::fmin(1.0f, v))); });
+            case sigmoid:
+                return x.unaryExpr([](float v) -> float { return 1.0f / (1.0f + std::exp(-v)); });
             default:
                 throw std::invalid_argument("activate: unknown activation function");
         }
@@ -87,22 +98,41 @@ struct FFNN {
                 return x.unaryExpr([](float v) -> float { return 1.0; });
             case relu:
                 return x.unaryExpr([](float v) -> float { return v >= 0.0 ? 1.0 : 0.0; });
+            case relu_clipped:
+                return x.unaryExpr([](float v) -> float { return v >= 0.0 ? (v <= 1.0 ? 1.0 : 0.0 ) : 0.0; });
+            case sigmoid:
+                return x.unaryExpr([](float v) -> float { float s = 1.0f / (1.0f + std::exp(-v)); return s * (1.0f - s); });
             default:
                 throw std::invalid_argument("activate: unknown activation function");
         }
     }
 
-    Eigen::MatrixXf cost_derivative(const Eigen::MatrixXf& a, const Eigen::MatrixXf& y) {
-        return a - y;
+    Eigen::MatrixXf cost_derivative(const Eigen::MatrixXf& a, const Eigen::MatrixXf& y, CostType cost_type) {
+        switch (cost_type) {
+            case quadratic:
+                return a - y;
+            case binary_cross_entropy: {
+                 Eigen::ArrayXXf ac = a.array().min(1.0f - kProbEps).max(kProbEps);
+                 return (-(y.array() / ac) + (1.0f - y.array()) / (1.0f - ac)).matrix();
+            }
+            default:
+                throw std::invalid_argument("cost_derivative: unknown cost type");
+        }
     }
 
-    static float cost(const Eigen::MatrixXf& a, const Eigen::MatrixXf& y) {
+    static float cost(const Eigen::MatrixXf& a, const Eigen::MatrixXf& y, CostType cost_type) {
         //std::cout << a << std::endl << std::endl;
-
-        float total_cost = 0.0;
-        auto t = a - y;
-        total_cost += (t.cwiseProduct(t) * 0.5).sum();
-        return total_cost / a.rows();
+        switch (cost_type) {
+            case quadratic: {
+                return ((a - y).cwiseSquare() * 0.5).sum() / a.rows();
+            }
+            case binary_cross_entropy: {
+                Eigen::ArrayXXf ac = a.array().min(1.0f - kProbEps).max(kProbEps);
+                return (-(y.array() * ac.log()) - (1.0f - y.array()) * (1.0f - ac).log()).sum() / a.rows();
+            }
+            default:
+                throw std::invalid_argument("cost: unknown cost type");
+        }
     }
 
     Eigen::MatrixXf forward(const Eigen::MatrixXf& input) {
@@ -114,7 +144,7 @@ struct FFNN {
         return prev_a;
     }
 
-    void backpropogate(const Eigen::MatrixXf& input, const Eigen::MatrixXf& target, BackpropResult& result, CostType cost_type = CostType::quadratic) {
+    void backpropogate(const Eigen::MatrixXf& input, const Eigen::MatrixXf& target, BackpropResult& result) {
         std::vector<Eigen::MatrixXf> as;
         std::vector<Eigen::MatrixXf> zs;
 
@@ -151,10 +181,10 @@ struct FFNN {
         result.bias_gradients.clear();
         result.weight_gradients.reserve(depth - 1);
         result.bias_gradients.reserve(depth - 1);
-        result.cost = cost(get_a(depth - 1), target);
+        result.cost = cost(get_a(depth - 1), target, cost_type);
 
         // get errors in the output layer
-        Eigen::MatrixXf output_error = cost_derivative(prev_a, target).cwiseProduct(activate_der(get_z(depth - 1), get_activation_func(depth - 1)));
+        Eigen::MatrixXf output_error = cost_derivative(prev_a, target, cost_type).cwiseProduct(activate_der(get_z(depth - 1), get_activation_func(depth - 1)));
         Eigen::MatrixXf prev_error = output_error;
 
         result.weight_gradients.push_back(output_error * get_a(depth - 2).transpose());

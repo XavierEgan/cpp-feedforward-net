@@ -52,17 +52,18 @@ int main() {
     Dataset test_data = read_data("MNIST/archive/mnist_test.csv");
 
     FFNN ffnn = FFNN::from_random(
-        {784, 256, 128, 64, 10},
-        {ActivationFunc::relu,  ActivationFunc::relu, ActivationFunc::relu, ActivationFunc::relu}
+        {784, 512, 256, 128, 64, 32, 10},
+        {ActivationFunc::relu, ActivationFunc::relu, ActivationFunc::relu, ActivationFunc::relu, ActivationFunc::relu, ActivationFunc::sigmoid},
+        CostType::binary_cross_entropy
     );
 
-    const int max_generations = 3000;
-    const float target_cost = 0.0013;
+    const int max_generations = 1000;
+    const float target_cost = 0.0;
 
-    double lr = 1.0;
-    const double min_lr = 0.05;
-    const double decay = 0.9992;
-    const int batch_size = 10000;
+    double lr = 0.5;
+    const double min_lr = 0.005;
+    const double decay = 0.999;
+    const int batch_size = 1000;
 
     int gen = 0;
     float avg_cost = 1000.0f;
