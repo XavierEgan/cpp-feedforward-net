@@ -4,8 +4,9 @@
 #include <fstream>
 #include <cmath>
 #include <chrono>
-#include <sstream>    // add
-#include <algorithm>  // add
+#include <sstream>
+#include <algorithm>
+#include <thread>
 
 struct Dataset {
     std::vector<Eigen::MatrixXf> images;
@@ -50,6 +51,8 @@ Dataset read_data(const std::string& data_loc) {
 }
 
 int main() {
+    Eigen::setNbThreads(std::thread::hardware_concurrency());
+
     Dataset train_data = read_data("MNIST/archive/mnist_train.csv");
     Dataset test_data = read_data("MNIST/archive/mnist_test.csv");
 
@@ -59,13 +62,13 @@ int main() {
         CostType::binary_cross_entropy
     );
 
-    const int max_generations = 5000;
+    const int max_generations = 10000;
     const float target_cost = 0.0;
 
     double lr = 0.5;
     const double min_lr = 0.005;
     const double decay = 0.999;
-    const int batch_size = 500;
+    const int batch_size = 1000;
 
     int gen = 0;
     float avg_cost = 1000.0f;
@@ -73,7 +76,7 @@ int main() {
     while (avg_cost > target_cost and gen < max_generations) {
         start_time = std::chrono::high_resolution_clock::now();
 
-        avg_cost = ffnn.gradient_descent(train_data.images, train_data.labels, batch_size, lr);
+        avg_cost = ffnn.batched_gradient_descent(train_data.images, train_data.labels, batch_size, lr);
         lr *= decay;
         lr = std::max(lr, min_lr);
 
@@ -83,16 +86,15 @@ int main() {
         gen++;
     }
 
-    // check to see how good our model is (FIXED accuracy calculation)
     int total_right = 0;
     for (int d = 0; d < (int)test_data.images.size(); d++) {
         // ground-truth = argmax(label)
         Eigen::Index gt_r = 0, gt_c = 0;
         test_data.labels[d].maxCoeff(&gt_r, &gt_c);
-        const Eigen::Index gt = gt_r; // labels are 10x1, so row is the class index
+        const Eigen::Index gt = gt_r;
 
         // prediction = argmax(output)
-        auto res = ffnn.forward(test_data.images[d]); // expected 10x1
+        auto res = ffnn.forward(test_data.images[d]);
         Eigen::Index pred_r = 0, pred_c = 0;
         res.maxCoeff(&pred_r, &pred_c);
         const Eigen::Index pred = pred_r;
@@ -100,8 +102,7 @@ int main() {
         if (pred == gt) total_right++;
     }
 
-    std::cout << "Total test correct: " << total_right
-              << " Percentage right: "
-              << (static_cast<float>(total_right) / static_cast<float>(test_data.images.size())) * 100.0f
-              << "%" << std::endl;
+    std::cout << "Total test correct: " << total_right << " Percentage right: " << (static_cast<float>(total_right) / static_cast<float>(test_data.images.size())) * 100.0f << "%" << std::endl;
 }
+
+// not batched: 0.1xx seconds for generation on 250 batch size {784, 512, 256, 128, 64, 32, 10},
