@@ -226,6 +226,9 @@ struct FFNN {
         if (inputs.size() != targets.size()) {
             throw std::invalid_argument("get_batch: inputs and targets must be the same size");
         }
+        if (inputs.size() == 0) {
+            throw std::invalid_argument("get_batch: inputs and targets cannot be empty");
+        }
 
         const int n =  inputs.size();
 
@@ -372,29 +375,6 @@ void train(FFNN& ffnn, const std::vector<Eigen::MatrixXf>& inputs, const std::ve
         lr *= decay;
     }
 }
-
-struct LearningRateScheduler {
-    double learning_rate;
-    double min_learning_rate;
-    double decay;
-
-    LearningRateScheduler(double start_lr = 0.01, double min_lr = 0.001, double decay = 0.999) : learning_rate(start_lr), min_learning_rate(min_lr), decay(decay) {}
-
-    void step_constant() {}
-
-    void step_decay() {
-        learning_rate *= decay;
-        if (learning_rate < min_learning_rate) {
-            learning_rate = min_learning_rate;
-        }
-    }
-
-    void step_lerp(int cur_step, int max_steps) {
-        // lerp down to min_learning_rate over max_steps
-        double t = static_cast<double>(cur_step) / static_cast<double>(max_steps);
-        learning_rate = learning_rate * (1.0 - t) + min_learning_rate * t;
-    }
-};
 
 struct DecayOnPlateauScheduler {
     double learning_rate;
