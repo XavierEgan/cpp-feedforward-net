@@ -106,6 +106,13 @@ private:
     std::vector<Eigen::MatrixXf> as;
 };
 
+struct AdamBuffer {
+    std::vector<Eigen::MatrixXf> m_weights;
+    std::vector<Eigen::MatrixXf> v_weights;
+    std::vector<Eigen::MatrixXf> m_biases;
+    std::vector<Eigen::MatrixXf> v_biases;
+};
+
 struct FFNN {
     size_t depth;
     std::vector<size_t> network_shape;
@@ -308,6 +315,10 @@ struct FFNN {
         }
 
         return backprop_result.get_cost();
+    }
+
+    float adam(const Eigen::MatrixXf& minibatch, const Eigen::MatrixXf& minibatch_targets, double lr = 0.005) {
+
     }
 
     // gets the weight matrix connecting l-1 to l
