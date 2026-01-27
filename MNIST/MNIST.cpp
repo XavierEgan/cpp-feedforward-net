@@ -1,5 +1,10 @@
 // g++ -std=c++23 -march=native -O3 -o test ./MNIST/MNIST.cpp && ./test  
 
+// compile command on mac for multithreading:
+/*
+clang++ -std=c++23 -O3 -march=native -Xpreprocessor -fopenmp -I"$(brew --prefix libomp)/include" ./MNIST/MNIST.cpp -L"$(brew --prefix libomp)/lib" -lomp -o test && ./test
+*/
+
 #include "../FFNN.cpp"
 #include <fstream>
 #include <cmath>
@@ -53,22 +58,23 @@ Dataset read_data(const std::string& data_loc) {
 int main() {
     Eigen::setNbThreads(std::thread::hardware_concurrency());
 
+    std::cout << "num htreads: " << Eigen::nbThreads() << std::endl;
+
+    const int max_generations = 276447231;
+    const float target_cost = 0.0;
+    const int batch_size = 250;
+    const float noise_amplitude = 0.05f;
+
+    DecayOnPlateauScheduler scheduler(0.2, 0.005, 0.9995, 5);
+
     Dataset train_data = read_data("MNIST/archive/mnist_train.csv");
     Dataset test_data = read_data("MNIST/archive/mnist_test.csv");
 
     FFNN ffnn = FFNN::from_random(
-        {784, 512, 256, 128, 64, 32, 10},
-        {ActivationFunc::relu, ActivationFunc::relu, ActivationFunc::relu, ActivationFunc::relu, ActivationFunc::relu, ActivationFunc::sigmoid},
+        {784, 512, 512, 256, 128, 64, 32, 10},
+        {ActivationFunc::relu, ActivationFunc::relu, ActivationFunc::relu, ActivationFunc::relu, ActivationFunc::relu, ActivationFunc::relu, ActivationFunc::sigmoid},
         CostType::binary_cross_entropy
     );
-
-    const int max_generations = 10000;
-    const float target_cost = 0.0;
-
-    double lr = 0.5;
-    const double min_lr = 0.005;
-    const double decay = 0.999;
-    const int batch_size = 1000;
 
     int gen = 0;
     float avg_cost = 1000.0f;
@@ -76,13 +82,20 @@ int main() {
     while (avg_cost > target_cost and gen < max_generations) {
         start_time = std::chrono::high_resolution_clock::now();
 
-        avg_cost = ffnn.batched_gradient_descent(train_data.images, train_data.labels, batch_size, lr);
-        lr *= decay;
-        lr = std::max(lr, min_lr);
+        auto [minibatch, minibatch_target] = FFNN::get_batch(train_data.images, train_data.labels, batch_size);
+
+        minibatch += Eigen::MatrixXf::Random(minibatch.rows(), minibatch.cols()) * noise_amplitude;
+
+        avg_cost = ffnn.gradient_descent(minibatch, minibatch_target, scheduler.learning_rate);
+
+        bool done_training = scheduler.step(avg_cost);
+        if (done_training) {
+            break;
+        }
 
         auto end_time = std::chrono::high_resolution_clock::now();
         std::chrono::duration<double> elapsed = end_time - start_time;
-        std::cout << "Generation " << gen + 1 << "  Avg Cost: " << avg_cost << "  lr: " << lr << "  Generation Time: " << elapsed.count() << " seconds" << std::endl;
+        std::cout << "Generation " << std::fixed << std::setprecision(6) << gen + 1 << "  Avg Cost: " << avg_cost << "  lr: " << scheduler.learning_rate << "  Generation Time: " << elapsed.count() << " seconds\n";
         gen++;
     }
 
@@ -105,4 +118,13 @@ int main() {
     std::cout << "Total test correct: " << total_right << " Percentage right: " << (static_cast<float>(total_right) / static_cast<float>(test_data.images.size())) * 100.0f << "%" << std::endl;
 }
 
-// not batched: 0.1xx seconds for generation on 250 batch size {784, 512, 256, 128, 64, 32, 10},
+/*
+98.61%
+FFNN ffnn = FFNN::from_random(
+    {784, 512, 256, 128, 64, 32, 10},
+    {ActivationFunc::relu, ActivationFunc::relu, ActivationFunc::relu, ActivationFunc::relu, ActivationFunc::relu, ActivationFunc::sigmoid},
+    CostType::binary_cross_entropy
+);
+DecayOnPlateauScheduler scheduler(0.5, 0.001, 0.99, 30);
+batch size = 250
+*/
