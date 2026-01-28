@@ -357,7 +357,13 @@ struct FFNN {
         backprop_result.get_cost() = cost(forward_result.get_a(depth - 1), target, cost_type);
 
         // get errors in the output layer
-        Eigen::MatrixXf output_error = cost_derivative(forward_result.get_a(depth - 1), target, cost_type).cwiseProduct(activate_der(forward_result.get_z(depth - 1), get_activation_func(depth - 1)));
+        Eigen::MatrixXf output_error;
+        if (cost_type == CostType::binary_cross_entropy && get_activation_func(depth - 1) == ActivationFunc::sigmoid) {
+            // special case where the derivative simplifies
+            output_error = forward_result.get_a(depth - 1) - target;
+        } else {
+            output_error = cost_derivative(forward_result.get_a(depth - 1), target, cost_type).cwiseProduct(activate_der(forward_result.get_z(depth - 1), get_activation_func(depth - 1)));
+        }
         Eigen::MatrixXf prev_error = output_error;
 
         backprop_result.set_weight_gradient(depth - 1, output_error * forward_result.get_a(depth - 2).transpose() / input.cols());
