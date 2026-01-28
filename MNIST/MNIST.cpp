@@ -42,11 +42,10 @@ Dataset read_data(const std::string& data_loc) {
     int i = 0;
 
     while (std::getline(data_file, line)) {
-        if (i  % 100 == 0 && i != 1000) {
+        if (i  % 100 == 0) {
             std::cout << "Reading line " << i << " From file " << data_loc << std::endl;
         }
         if (i  == 1000) {
-            std::cout << "Reading line " << i << " From file " << data_loc << std::endl;
             return Dataset{images, labels};
         }
         i++;
@@ -73,9 +72,12 @@ Dataset read_data(const std::string& data_loc) {
     }
     return Dataset{images, labels};
 }
-
+#include <immintrin.h>
 int main() {
-    Eigen::setNbThreads(1);
+    // subnormal floats are like 2.5x slower or so from testing, so we just turn them off
+    _MM_SET_FLUSH_ZERO_MODE(_MM_FLUSH_ZERO_ON);
+    _MM_SET_DENORMALS_ZERO_MODE(_MM_DENORMALS_ZERO_ON);
+    Eigen::setNbThreads(std::thread::hardware_concurrency() / 2);
 
     std::cout << "num htreads: " << Eigen::nbThreads() << std::endl;
 
@@ -84,7 +86,7 @@ int main() {
     const int batch_size = 250;
     const float noise_amplitude = 0.1f;
 
-    DecayOnPlateauScheduler scheduler(0.2, 0.001, 0.996, 20);
+    DecayOnPlateauScheduler scheduler(1e-3, 5e-4, 0.995, 20);
 
     Dataset train_data = read_data("MNIST/MNIST/mnist_train.csv");
     Dataset test_data = read_data("MNIST/MNIST/mnist_test.csv");
@@ -99,21 +101,20 @@ int main() {
 
     std::cout << "Made ffnn" << std::endl;
 
-    int gen = 0;
+    int gen = 1;
     float avg_cost = 1000.0f;
     auto start_time = std::chrono::high_resolution_clock::now();
+    Eigen::MatrixXf minibatch;
+    Eigen::MatrixXf minibatch_target;
     while (gen < max_generations) {
-        std::cout << "Starting generation " << gen + 1 << std::endl;
         start_time = std::chrono::high_resolution_clock::now();
-
-        auto [minibatch, minibatch_target] = FFNN::get_batch(train_data.images, train_data.labels, batch_size);
+        
+        FFNN::get_batch(train_data.images, train_data.labels, minibatch, minibatch_target, batch_size);
 
         minibatch += Eigen::MatrixXf::Random(minibatch.rows(), minibatch.cols()) * noise_amplitude;
         minibatch = minibatch.cwiseMin(1.0f).cwiseMax(0.0f);
-        std::cout << "Got minibatch" << gen + 1 << std::endl;
 
         avg_cost = ffnn.adam(minibatch, minibatch_target, gen, scheduler.learning_rate);
-        std::cout << "adaM finished" << std::endl;
 
         bool done_training = scheduler.step(avg_cost);
         if (done_training) {

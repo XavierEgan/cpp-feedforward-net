@@ -3,7 +3,6 @@
 
 // g++ -std=c++23 -march=native -O3 -o test FFNN.cpp && test.exe
 // g++ -std=c++23 -march=native -DNDEBUG -O3 -o test FFNN.cpp && ./test
-
 #include "Eigen/Dense"
 #include <vector>
 #include <iomanip>
@@ -44,11 +43,15 @@ enum CostType {
 };
 
 struct BackpropResult {
-    BackpropResult() = default;
-    BackpropResult(int depth) : cost(0.0f), depth(depth) {
+    BackpropResult() = delete;
+    BackpropResult(int depth, std::vector<size_t> network_shape) : cost(0.0f), depth(depth) {
         weight_gradients.resize(depth - 1);
         bias_gradients.resize(depth - 1);
-        cost = 0.0f;
+
+        for (int l = 1; l < depth; l++) {
+            set_weight_gradient(l , Eigen::MatrixXf::Zero(network_shape.at(l), network_shape.at(l - 1)));
+            set_bias_gradient(l , Eigen::MatrixXf::Zero(network_shape.at(l), 1));
+        }
     }
 
     void set_weight_gradient(int l, const Eigen::MatrixXf& grad) {
@@ -81,10 +84,15 @@ private:
 };
 
 struct ForwardResult {
-    ForwardResult() : depth(0) {};
-    ForwardResult(int depth) : depth(depth) {
+    ForwardResult() = delete;
+    ForwardResult(int depth, std::vector<size_t> network_shape) : depth(depth) {
         zs.resize(depth - 1);
         as.resize(depth);
+
+        for (int l = 1; l < depth; l++) {
+            set_z(l, Eigen::MatrixXf::Zero(network_shape.at(l), 1));
+            set_a(l, Eigen::MatrixXf::Zero(network_shape.at(l), 1));
+        }
     }
 
     void set_z(int l, const Eigen::MatrixXf& z) {
@@ -140,36 +148,36 @@ struct AdamBuffer {
     }
 
     const Eigen::MatrixXf& get_weight_m(int l) const {
-        check_layer_in_range(l, depth + 1);
+        check_layer_in_range(l, depth);
         return m_weights.at(l - 1);
     }
     const Eigen::MatrixXf& get_weight_v(int l) const {
-        check_layer_in_range(l, depth + 1);
+        check_layer_in_range(l, depth);
         return v_weights.at(l - 1);
     }
     const Eigen::MatrixXf& get_bias_m(int l) const {
-        check_layer_in_range(l, depth + 1);
+        check_layer_in_range(l, depth);
         return m_biases.at(l - 1);
     }
     const Eigen::MatrixXf& get_bias_v(int l) const {
-        check_layer_in_range(l, depth + 1);
+        check_layer_in_range(l, depth);
         return v_biases.at(l - 1);
     }
 
     void set_weight_m(int l, const Eigen::MatrixXf& m) {
-        check_layer_in_range(l, depth + 1);
+        check_layer_in_range(l, depth);
         m_weights.at(l - 1) = m;
     }
     void set_weight_v(int l, const Eigen::MatrixXf& v) {
-        check_layer_in_range(l, depth + 1);
+        check_layer_in_range(l, depth);
         v_weights.at(l - 1) = v;
     }
     void set_bias_m(int l, const Eigen::MatrixXf& m) {
-        check_layer_in_range(l, depth + 1);
+        check_layer_in_range(l, depth);
         m_biases.at(l - 1) = m;
     }
     void set_bias_v(int l, const Eigen::MatrixXf& v) {
-        check_layer_in_range(l, depth + 1);
+        check_layer_in_range(l, depth);
         v_biases.at(l - 1) = v;
     }
 };
@@ -205,8 +213,8 @@ struct FFNN {
             }
         }
 
-        ForwardResult forward_result = ForwardResult(depth);
-        BackpropResult backprop_result = BackpropResult(depth);
+        ForwardResult forward_result = ForwardResult(depth, network_shape);
+        BackpropResult backprop_result = BackpropResult(depth, network_shape);
         AdamBuffer adam_buffer = AdamBuffer(depth, network_shape);
         
         FFNN ffnn(forward_result, backprop_result, adam_buffer);
@@ -286,7 +294,7 @@ struct FFNN {
         }
     }
 
-    static std::pair<Eigen::MatrixXf, Eigen::MatrixXf> get_batch(const std::vector<Eigen::MatrixXf>& inputs, const std::vector<Eigen::MatrixXf>& targets, int batch_size = -1) {
+    static void get_batch(const std::vector<Eigen::MatrixXf>& inputs, const std::vector<Eigen::MatrixXf>& targets, Eigen::MatrixXf& minibatch, Eigen::MatrixXf& minibatch_targets, int batch_size = -1) {
         if (inputs.size() != targets.size()) {
             throw std::invalid_argument("get_batch: inputs and targets must be the same size");
         }
@@ -309,8 +317,8 @@ struct FFNN {
             indices.resize(batch_size);
         }
 
-        Eigen::MatrixXf minibatch = Eigen::MatrixXf::Zero(inputs.at(0).rows(), batch_size);
-        Eigen::MatrixXf minibatch_targets = Eigen::MatrixXf::Zero(targets.at(0).rows(), batch_size);
+        minibatch.resize(inputs.at(0).rows(), batch_size);
+        minibatch_targets.resize(targets.at(0).rows(), batch_size);
 
         for (int b = 0; b < batch_size; b++) {
             // std::cout << "here" << std::endl;
@@ -322,14 +330,13 @@ struct FFNN {
             minibatch.col(b) = inputs.at(indices.at(b));
             minibatch_targets.col(b) = targets.at(indices.at(b));
         }
-
-        return {minibatch, minibatch_targets};
     }
 
     Eigen::MatrixXf forward(const Eigen::MatrixXf& input) {
         Eigen::MatrixXf prev_a = input;
         for (size_t l = 1; l < depth; l++) {
-            Eigen::MatrixXf z = get_weight(l) * prev_a + get_bias(l);
+            
+            Eigen::MatrixXf z = (get_weight(l) * prev_a).colwise() + get_bias(l).col(0);
             prev_a = activate(z, get_activation_func(l));
         }
         return prev_a;
@@ -343,18 +350,18 @@ struct FFNN {
         }
     }
 
-    void backpropogate(const Eigen::MatrixXf& input, const Eigen::MatrixXf& target, BackpropResult& result) {
+    void backpropogate(const Eigen::MatrixXf& input, const Eigen::MatrixXf& target) {
         forward_result.set_a(0, input);
         forward(forward_result);
 
-        result.get_cost() = cost(forward_result.get_a(depth - 1), target, cost_type);
+        backprop_result.get_cost() = cost(forward_result.get_a(depth - 1), target, cost_type);
 
         // get errors in the output layer
         Eigen::MatrixXf output_error = cost_derivative(forward_result.get_a(depth - 1), target, cost_type).cwiseProduct(activate_der(forward_result.get_z(depth - 1), get_activation_func(depth - 1)));
         Eigen::MatrixXf prev_error = output_error;
 
-        result.set_weight_gradient(depth - 1, output_error * forward_result.get_a(depth - 2).transpose() / input.cols());
-        result.set_bias_gradient(depth - 1, output_error.rowwise().mean());
+        backprop_result.set_weight_gradient(depth - 1, output_error * forward_result.get_a(depth - 2).transpose() / input.cols());
+        backprop_result.set_bias_gradient(depth - 1, output_error.rowwise().mean());
         
         // get error in all future layers
         for (size_t l = depth - 2; l > 0; l--) {
@@ -363,8 +370,8 @@ struct FFNN {
             // and the derivative of the activation function of this layer
             Eigen::MatrixXf this_error = (get_weight(l + 1).transpose() * prev_error).cwiseProduct(activate_der(forward_result.get_z(l), get_activation_func(l)));
             
-            result.set_weight_gradient(l, this_error * forward_result.get_a(l - 1).transpose() / input.cols());
-            result.set_bias_gradient(l, this_error.rowwise().mean());
+            backprop_result.set_weight_gradient(l, this_error * forward_result.get_a(l - 1).transpose() / input.cols());
+            backprop_result.set_bias_gradient(l, this_error.rowwise().mean());
             
             prev_error = this_error;
         }
@@ -378,7 +385,7 @@ struct FFNN {
         }
 
         // backprop to get gradients
-        backpropogate(minibatch, minibatch_targets, backprop_result);
+        backpropogate(minibatch, minibatch_targets);
 
         // update weights and biases
         for (size_t l = 1; l < depth; l++) {
@@ -397,10 +404,8 @@ struct FFNN {
         }
 
         // backprop to get gradients
-        backpropogate(minibatch, minibatch_targets, backprop_result);
-
-        std::cout << "backprop done" << std::endl;
-
+        backpropogate(minibatch, minibatch_targets);
+        
         // update weights and biases
         for (size_t l = 1; l < depth; l++) {
             adam_buffer.set_weight_m(l, beta1 * adam_buffer.get_weight_m(l) + (1.0 - beta1) * backprop_result.get_weight_gradient(l));
@@ -466,7 +471,9 @@ private:
 
 void train(FFNN& ffnn, const std::vector<Eigen::MatrixXf>& inputs, const std::vector<Eigen::MatrixXf>& targets, int generations, int batch_size = -1, double lr = 0.005, double decay = .999) {
     for (int gen = 0; gen < generations; gen++) {
-        auto [minibatch, minibatch_targets] = FFNN::get_batch(inputs, targets, batch_size);
+        Eigen::MatrixXf minibatch;
+        Eigen::MatrixXf minibatch_targets;
+        FFNN::get_batch(inputs, targets, minibatch, minibatch_targets, batch_size);
         float avg_cost = ffnn.gradient_descent(minibatch, minibatch_targets, lr);
 
         std::cout << "Generation " << gen << "  Avg Cost: " << avg_cost << "  lr: " << lr << std::endl;
