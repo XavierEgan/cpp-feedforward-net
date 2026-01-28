@@ -1,5 +1,7 @@
 // g++ -std=c++23 -march=native -O3 -o test ./MNIST/MNIST.cpp && ./test
-// g++ -std=c++23 -march=native -fopenmp -O3 -o test ./MNIST/MNIST.cpp && test.exe
+// del test.exe && g++ -std=c++23 -march=native -fopenmp -O3 -o test ./MNIST/MNIST.cpp && test.exe
+
+//g++ -std=c++23 -march=native -fopenmp -O0 -ggdb -fno-omit-frame-pointer -o test ./MNIST/MNIST.cpp && lldb test.exe
 
 // compile command on mac for multithreading:
 /*
@@ -32,9 +34,23 @@ Dataset read_data(const std::string& data_loc) {
 
     std::vector<Eigen::MatrixXf> images;
     std::vector<Eigen::MatrixXf> labels;
+    images.reserve(60000);
+    labels.reserve(60000);
+
     std::getline(data_file, line); // remvoe the header line
 
+    int i = 0;
+
     while (std::getline(data_file, line)) {
+        if (i  % 100 == 0 && i != 1000) {
+            std::cout << "Reading line " << i << " From file " << data_loc << std::endl;
+        }
+        if (i  == 1000) {
+            std::cout << "Reading line " << i << " From file " << data_loc << std::endl;
+            return Dataset{images, labels};
+        }
+        i++;
+
         Eigen::MatrixXf label = Eigen::MatrixXf::Zero(10, 1);
         Eigen::MatrixXf image(784, 1);
 
@@ -59,7 +75,7 @@ Dataset read_data(const std::string& data_loc) {
 }
 
 int main() {
-    Eigen::setNbThreads(std::thread::hardware_concurrency() / 2);
+    Eigen::setNbThreads(1);
 
     std::cout << "num htreads: " << Eigen::nbThreads() << std::endl;
 
@@ -73,24 +89,31 @@ int main() {
     Dataset train_data = read_data("MNIST/MNIST/mnist_train.csv");
     Dataset test_data = read_data("MNIST/MNIST/mnist_test.csv");
 
+    std::cout << "Finished reading data!" << std::endl;
+
     FFNN ffnn = FFNN::from_random(
         {784, 1028, 2048, 1028, 512, 256, 128, 64, 32, 10},
         {ActivationFunc::relu, ActivationFunc::relu, ActivationFunc::relu, ActivationFunc::relu, ActivationFunc::relu, ActivationFunc::relu, ActivationFunc::relu, ActivationFunc::relu, ActivationFunc::sigmoid},
         CostType::binary_cross_entropy
     );
 
+    std::cout << "Made ffnn" << std::endl;
+
     int gen = 0;
     float avg_cost = 1000.0f;
     auto start_time = std::chrono::high_resolution_clock::now();
-    while (avg_cost > target_cost && gen < max_generations) {
+    while (gen < max_generations) {
+        std::cout << "Starting generation " << gen + 1 << std::endl;
         start_time = std::chrono::high_resolution_clock::now();
 
         auto [minibatch, minibatch_target] = FFNN::get_batch(train_data.images, train_data.labels, batch_size);
 
         minibatch += Eigen::MatrixXf::Random(minibatch.rows(), minibatch.cols()) * noise_amplitude;
         minibatch = minibatch.cwiseMin(1.0f).cwiseMax(0.0f);
+        std::cout << "Got minibatch" << gen + 1 << std::endl;
 
-        avg_cost = ffnn.gradient_descent(minibatch, minibatch_target, scheduler.learning_rate);
+        avg_cost = ffnn.adam(minibatch, minibatch_target, gen, scheduler.learning_rate);
+        std::cout << "adaM finished" << std::endl;
 
         bool done_training = scheduler.step(avg_cost);
         if (done_training) {
