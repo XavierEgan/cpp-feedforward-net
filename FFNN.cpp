@@ -34,12 +34,14 @@ enum ActivationFunc {
     linear,
     relu,
     relu_clipped,
-    sigmoid
+    sigmoid,
+    softmax
 };
 
 enum CostType {
     quadratic,
-    binary_cross_entropy
+    binary_cross_entropy,
+    categorical_cross_entropy
 };
 
 struct BackpropResult {
@@ -213,6 +215,14 @@ struct FFNN {
             }
         }
 
+        if (cost_type == CostType::binary_cross_entropy && activation_funcs.back() != ActivationFunc::sigmoid) {
+            throw std::invalid_argument("from_random: binary_cross_entropy cost requires sigmoid activation in output layer");
+        }
+
+        if (cost_type == CostType::categorical_cross_entropy && activation_funcs.back() != ActivationFunc::softmax) {
+            throw std::invalid_argument("from_random: categorical_cross_entropy cost requires softmax activation in output layer");
+        }
+
         ForwardResult forward_result = ForwardResult(depth, network_shape);
         BackpropResult backprop_result = BackpropResult(depth, network_shape);
         AdamBuffer adam_buffer = AdamBuffer(depth, network_shape);
@@ -236,31 +246,38 @@ struct FFNN {
         return ffnn;
     }
 
-    static Eigen::MatrixXf activate(const Eigen::MatrixXf& x, ActivationFunc func) {
+    static Eigen::MatrixXf activate(const Eigen::MatrixXf& z, ActivationFunc func) {
         switch (func) {
             case linear:
-                return x;
+                return z;
             case relu:
-                return x.cwiseMax(0.0f);
+                return z.cwiseMax(0.0f);
             case relu_clipped:
-                return x.cwiseMax(0.0f).cwiseMin(1.0f);
+                return z.cwiseMax(0.0f).cwiseMin(1.0f);
             case sigmoid:
-                return 1.0f / ((-x).array().exp() + 1);
+                return 1.0f / ((-z).array().exp() + 1);
+            case softmax: {
+                // https://eli.thegreenplace.net/2016/the-softmax-function-and-its-derivative/
+                // numerically stable softmax
+                Eigen::MatrixXf shiftz = z.array().rowwise() - z.array().colwise().maxCoeff();
+                Eigen::MatrixXf exps = shiftz.array().exp();
+                return exps.array().rowwise() / exps.array().colwise().sum();
+            }
             default:
                 throw std::invalid_argument("activate: unknown activation function");
         }
     }
 
-    static Eigen::MatrixXf activate_der(const Eigen::MatrixXf& x, ActivationFunc func) {
+    static Eigen::MatrixXf activate_der(const Eigen::MatrixXf& a, ActivationFunc func) {
         switch (func) {
             case linear:
-                return x.unaryExpr([](float v) -> float { return 1.0; });
+                return Eigen::MatrixXf::Ones(a.rows(), a.cols());
             case relu:
-                return x.unaryExpr([](float v) -> float { return v >= 0.0 ? 1.0 : 0.0; });
+                return a.unaryExpr([](float v) -> float { return v >= 0.0 ? 1.0 : 0.0; });
             case relu_clipped:
-                return x.unaryExpr([](float v) -> float { return v >= 0.0 ? (v <= 1.0 ? 1.0 : 0.0 ) : 0.0; });
+                return a.unaryExpr([](float v) -> float { return v >= 0.0 ? (v <= 1.0 ? 1.0 : 0.0 ) : 0.0; });
             case sigmoid:
-                return x.unaryExpr([](float v) -> float { float s = 1.0f / (1.0f + std::exp(-v)); return s * (1.0f - s); });
+                return a.unaryExpr([](float v) -> float { float s = 1.0f / (1.0f + std::exp(-v)); return s * (1.0f - s); });
             default:
                 throw std::invalid_argument("activate: unknown activation function");
         }
@@ -271,9 +288,10 @@ struct FFNN {
             case quadratic:
                 return a - y;
             case binary_cross_entropy: {
-                 Eigen::ArrayXXf ac = a.array().min(1.0f - kProbEps).max(kProbEps);
-                 return (-(y.array() / ac) + (1.0f - y.array()) / (1.0f - ac)).matrix();
+                Eigen::ArrayXXf ac = a.array().min(1.0f - kProbEps).max(kProbEps);
+                return (-(y.array() / ac) + (1.0f - y.array()) / (1.0f - ac)).matrix();
             }
+            // categorical cross-entropy and binary cross-entropy are guarenteed to be simplified because they are always paired with softmax and sigmoid respectively
             default:
                 throw std::invalid_argument("cost_derivative: unknown cost type");
         }
@@ -288,6 +306,10 @@ struct FFNN {
             case binary_cross_entropy: {
                 Eigen::ArrayXXf ac = a.array().min(1.0f - kProbEps).max(kProbEps);
                 return (-(y.array() * ac.log()) - (1.0f - y.array()) * (1.0f - ac).log()).sum() / (a.rows() * a.cols());
+            }
+            case categorical_cross_entropy: {
+                Eigen::ArrayXXf ac = a.array().min(1.0f - kProbEps).max(kProbEps);
+                return (-(y.array() * ac.log())).sum() / (a.rows() * a.cols());
             }
             default:
                 throw std::invalid_argument("cost: unknown cost type");
@@ -358,8 +380,11 @@ struct FFNN {
 
         // get errors in the output layer
         Eigen::MatrixXf output_error;
-        if (cost_type == CostType::binary_cross_entropy && get_activation_func(depth - 1) == ActivationFunc::sigmoid) {
+        if (cost_type == CostType::binary_cross_entropy) {
             // special case where the derivative simplifies
+            output_error = forward_result.get_a(depth - 1) - target;
+        } else if (cost_type == CostType::categorical_cross_entropy) {
+            // special case: softmax + cross-entropy simplifies to (a - y)
             output_error = forward_result.get_a(depth - 1) - target;
         } else {
             output_error = cost_derivative(forward_result.get_a(depth - 1), target, cost_type).cwiseProduct(activate_der(forward_result.get_z(depth - 1), get_activation_func(depth - 1)));

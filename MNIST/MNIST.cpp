@@ -1,5 +1,5 @@
-// g++ -std=c++23 -march=native -O3 -o test ./MNIST/MNIST.cpp && ./test
-// del test.exe && g++ -std=c++23 -march=native -fopenmp -O3 -o test ./MNIST/MNIST.cpp && test.exe
+// g++ -std=c++23 -O3 -o test ./MNIST/MNIST.cpp && ./test
+// del test.exe && g++ -std=c++23 -fopenmp -O3 -o test ./MNIST/MNIST.cpp && test.exe
 
 //g++ -std=c++23 -march=native -fopenmp -O0 -ggdb -fno-omit-frame-pointer -o test ./MNIST/MNIST.cpp && lldb test.exe
 
@@ -46,7 +46,7 @@ Dataset read_data(const std::string& data_loc) {
             std::cout << "Reading line " << i << " From file " << data_loc << std::endl;
         }
         if (i  == 1000) {
-            return Dataset{images, labels};
+            //return Dataset{images, labels};
         }
         i++;
 
@@ -77,16 +77,16 @@ int main() {
     // subnormal floats are like 2.5x slower or so from testing, so we just turn them off
     _MM_SET_FLUSH_ZERO_MODE(_MM_FLUSH_ZERO_ON);
     _MM_SET_DENORMALS_ZERO_MODE(_MM_DENORMALS_ZERO_ON);
-    Eigen::setNbThreads(std::thread::hardware_concurrency() / 2);
 
+    Eigen::setNbThreads(std::thread::hardware_concurrency() / 2);
     std::cout << "num htreads: " << Eigen::nbThreads() << std::endl;
 
-    const int max_generations = 276447231;
-    const float target_cost = 0.0;
-    const int batch_size = 250;
-    const float noise_amplitude = 0.1f;
+    DecayOnPlateauScheduler scheduler(1e-3, 5e-5, 0.99, 50);
 
-    DecayOnPlateauScheduler scheduler(1e-3, 5e-4, 0.995, 20);
+    const int max_generations = 1000;
+    const float target_cost = 0.0;
+    const int batch_size = 500;
+    const float noise_amplitude = 0.1f;
 
     Dataset train_data = read_data("MNIST/MNIST/mnist_train.csv");
     Dataset test_data = read_data("MNIST/MNIST/mnist_test.csv");
@@ -95,8 +95,8 @@ int main() {
 
     FFNN ffnn = FFNN::from_random(
         {784, 1028, 2048, 1028, 512, 256, 128, 64, 32, 10},
-        {ActivationFunc::relu, ActivationFunc::relu, ActivationFunc::relu, ActivationFunc::relu, ActivationFunc::relu, ActivationFunc::relu, ActivationFunc::relu, ActivationFunc::relu, ActivationFunc::sigmoid},
-        CostType::binary_cross_entropy
+        {ActivationFunc::relu, ActivationFunc::relu, ActivationFunc::relu, ActivationFunc::relu, ActivationFunc::relu, ActivationFunc::relu, ActivationFunc::relu, ActivationFunc::relu, ActivationFunc::softmax},
+        CostType::categorical_cross_entropy
     );
 
     std::cout << "Made ffnn" << std::endl;
@@ -114,17 +114,12 @@ int main() {
         minibatch += Eigen::MatrixXf::Random(minibatch.rows(), minibatch.cols()) * noise_amplitude;
         minibatch = minibatch.cwiseMin(1.0f).cwiseMax(0.0f);
 
-        avg_cost = ffnn.adam(minibatch, minibatch_target, gen, scheduler.learning_rate);
-
-        bool done_training = scheduler.step(avg_cost);
-        if (done_training) {
-            break;
-        }
+        avg_cost = ffnn.adam(minibatch, minibatch_target, gen);
 
         auto end_time = std::chrono::high_resolution_clock::now();
         std::chrono::duration<double> elapsed = end_time - start_time;
         if (gen % 10 == 0) {
-            std::cout << "Generation " << std::fixed << std::setprecision(6) << gen + 1 << "  Avg Cost: " << avg_cost << "  lr: " << scheduler.learning_rate << "  Generation Time: " << elapsed.count() << " seconds\n";
+            std::cout << "Generation " << std::fixed << std::setprecision(6) << gen + 1 << "  Avg Cost: " << avg_cost << "  Generation Time: " << elapsed.count() << " seconds\n";
         }
         gen++;
     }
