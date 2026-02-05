@@ -8,7 +8,8 @@
 clang++ -std=c++23 -O3 -march=native -Xpreprocessor -fopenmp -I"$(brew --prefix libomp)/include" ./MNIST/MNIST.cpp -L"$(brew --prefix libomp)/lib" -lomp -o test && ./test
 */
 
-#include "../FFNN.cpp"
+#include "../AdamOptimiser.hpp"
+
 #include <fstream>
 #include <cmath>
 #include <chrono>
@@ -72,7 +73,9 @@ Dataset read_data(const std::string& data_loc) {
     }
     return Dataset{images, labels};
 }
+
 #include <immintrin.h>
+
 int main() {
     // subnormal floats are like 2.5x slower or so from testing, so we just turn them off
     _MM_SET_FLUSH_ZERO_MODE(_MM_FLUSH_ZERO_ON);
@@ -80,8 +83,6 @@ int main() {
 
     Eigen::setNbThreads(std::thread::hardware_concurrency() / 2);
     std::cout << "num htreads: " << Eigen::nbThreads() << std::endl;
-
-    DecayOnPlateauScheduler scheduler(1e-3, 5e-5, 0.97, 50);
 
     const int max_generations = 1000;
     const float target_cost = 0.0;
@@ -91,32 +92,30 @@ int main() {
     Dataset train_data = read_data("MNIST/MNIST/mnist_train.csv");
     Dataset test_data = read_data("MNIST/MNIST/mnist_test.csv");
 
-    std::cout << "Finished reading data!" << std::endl;
+    std::vector<size_t> layer_sizes = {784, 512, 256, 128, 64, 32, 10};
+    std::vector<ActivationFunc> activation_funcs = {ActivationFunc::relu, ActivationFunc::relu, ActivationFunc::relu, ActivationFunc::relu, ActivationFunc::relu, ActivationFunc::softmax};
 
-    FFNN ffnn = FFNN::from_random(
-        {784, 1028, 512, 256, 128, 64, 32, 10},
-        {ActivationFunc::relu, ActivationFunc::relu, ActivationFunc::relu, ActivationFunc::relu, ActivationFunc::relu, ActivationFunc::relu, ActivationFunc::softmax},
-        CostType::categorical_cross_entropy
+    FFNN ffnn = FFNN::from_random_he_scaling(
+        layer_sizes,
+        activation_funcs
     );
 
-    std::cout << "Made ffnn" << std::endl;
+    AdamOptimiser optimiser(ffnn, CostType::categorical_cross_entropy, 0.001);
 
-    int gen = 1;
+    int gen = 0;
     float avg_cost = 1000.0f;
     auto start_time = std::chrono::high_resolution_clock::now();
     Eigen::MatrixXf minibatch;
     Eigen::MatrixXf minibatch_target;
-    while (true) {
+    while (gen < max_generations && avg_cost > target_cost) {
         start_time = std::chrono::high_resolution_clock::now();
         
-        FFNN::get_batch(train_data.images, train_data.labels, minibatch, minibatch_target, batch_size);
+        nn_utils::get_batch(train_data.images, train_data.labels, minibatch, minibatch_target, batch_size);
 
         minibatch += Eigen::MatrixXf::Random(minibatch.rows(), minibatch.cols()) * noise_amplitude;
         minibatch = minibatch.cwiseMin(1.0f).cwiseMax(0.0f);
 
-        avg_cost = ffnn.adam(minibatch, minibatch_target, gen, scheduler.learning_rate);
-
-        if (scheduler.step(avg_cost)) break;
+        avg_cost = optimiser.step(minibatch, minibatch_target);
 
         auto end_time = std::chrono::high_resolution_clock::now();
         std::chrono::duration<double> elapsed = end_time - start_time;
