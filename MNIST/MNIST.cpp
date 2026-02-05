@@ -81,7 +81,7 @@ int main() {
     Eigen::setNbThreads(std::thread::hardware_concurrency() / 2);
     std::cout << "num htreads: " << Eigen::nbThreads() << std::endl;
 
-    DecayOnPlateauScheduler scheduler(1e-3, 5e-5, 0.99, 50);
+    DecayOnPlateauScheduler scheduler(1e-3, 5e-5, 0.97, 50);
 
     const int max_generations = 1000;
     const float target_cost = 0.0;
@@ -94,8 +94,8 @@ int main() {
     std::cout << "Finished reading data!" << std::endl;
 
     FFNN ffnn = FFNN::from_random(
-        {784, 1028, 2048, 1028, 512, 256, 128, 64, 32, 10},
-        {ActivationFunc::relu, ActivationFunc::relu, ActivationFunc::relu, ActivationFunc::relu, ActivationFunc::relu, ActivationFunc::relu, ActivationFunc::relu, ActivationFunc::relu, ActivationFunc::softmax},
+        {784, 1028, 512, 256, 128, 64, 32, 10},
+        {ActivationFunc::relu, ActivationFunc::relu, ActivationFunc::relu, ActivationFunc::relu, ActivationFunc::relu, ActivationFunc::relu, ActivationFunc::softmax},
         CostType::categorical_cross_entropy
     );
 
@@ -106,7 +106,7 @@ int main() {
     auto start_time = std::chrono::high_resolution_clock::now();
     Eigen::MatrixXf minibatch;
     Eigen::MatrixXf minibatch_target;
-    while (gen < max_generations) {
+    while (true) {
         start_time = std::chrono::high_resolution_clock::now();
         
         FFNN::get_batch(train_data.images, train_data.labels, minibatch, minibatch_target, batch_size);
@@ -114,12 +114,14 @@ int main() {
         minibatch += Eigen::MatrixXf::Random(minibatch.rows(), minibatch.cols()) * noise_amplitude;
         minibatch = minibatch.cwiseMin(1.0f).cwiseMax(0.0f);
 
-        avg_cost = ffnn.adam(minibatch, minibatch_target, gen);
+        avg_cost = ffnn.adam(minibatch, minibatch_target, gen, scheduler.learning_rate);
+
+        if (scheduler.step(avg_cost)) break;
 
         auto end_time = std::chrono::high_resolution_clock::now();
         std::chrono::duration<double> elapsed = end_time - start_time;
         if (gen % 10 == 0) {
-            std::cout << "Generation " << std::fixed << std::setprecision(6) << gen + 1 << "  Avg Cost: " << avg_cost << "  Generation Time: " << elapsed.count() << " seconds\n";
+            std::cout << "Generation " << std::fixed << std::setprecision(6) << gen << "  Avg Cost: " << avg_cost << "  Generation Time: " << elapsed.count() << " seconds\n";
         }
         gen++;
     }
@@ -152,4 +154,7 @@ FFNN ffnn = FFNN::from_random(
 );
 DecayOnPlateauScheduler scheduler(0.5, 0.001, 0.99, 30);
 batch size = 250
+*/
+/*
+
 */

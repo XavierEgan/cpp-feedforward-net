@@ -1,5 +1,5 @@
-// g++ -std=c++23 -g3 -ggdb -O0 -fno-omit-frame-pointer -fno-optimize-sibling-calls -o test.exe FFNN.cpp && test.exe
-// g++ -std=c++23 -g3 -ggdb -O0 -fno-omit-frame-pointer -fno-optimize-sibling-calls -o test.exe FFNN.cpp && gdb test.exe
+// g++ -std=c++23 -g3 -g -O0 -fno-omit-frame-pointer -fno-optimize-sibling-calls -o test.exe FFNN.cpp && test.exe
+// g++ -std=c++23 -g3 -g -O0 -fno-omit-frame-pointer -fno-optimize-sibling-calls -o test.exe FFNN.cpp && gdb test.exe
 
 // g++ -std=c++23 -march=native -O3 -o test FFNN.cpp && test.exe
 // g++ -std=c++23 -march=native -DNDEBUG -O3 -o test FFNN.cpp && ./test
@@ -427,7 +427,7 @@ struct FFNN {
         return backprop_result.get_cost();
     }
 
-    float adam(const Eigen::MatrixXf& minibatch, const Eigen::MatrixXf& minibatch_targets, int t, double lr = 0.005, double beta1 = 0.9, double beta2 = 0.999, double epsilon = 1e-8) {
+    float adam(const Eigen::MatrixXf& minibatch, const Eigen::MatrixXf& minibatch_targets, int t, double lr = 1e-3, double beta1 = 0.9, double beta2 = 0.999, double epsilon = 1e-8) {
         const int minibatch_size = minibatch.cols();
 
         if (minibatch_size <= 0) {
@@ -535,7 +535,7 @@ struct DecayOnPlateauScheduler {
             if (epochs_no_improve >= patience) {
                 learning_rate *= decay;
                 if (learning_rate < min_learning_rate) {
-                    // were dont with training
+                    // were done with training
                     return true;
                 }
                 epochs_no_improve = 0;
