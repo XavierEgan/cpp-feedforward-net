@@ -12,6 +12,7 @@
 #include <algorithm>
 #include <numeric>
 #include <iostream>
+#include <fstream>
 
 struct FFNN {
     size_t depth;
@@ -40,8 +41,8 @@ struct FFNN {
             }
         }
 
-        ForwardResult forward_result = ForwardResult(depth, network_shape);
-        BackpropResult backprop_result = BackpropResult(depth, network_shape);
+        ForwardResult forward_result = ForwardResult(network_shape);
+        BackpropResult backprop_result = BackpropResult(network_shape);
 
         FFNN ffnn(forward_result, backprop_result);
 
@@ -61,22 +62,56 @@ struct FFNN {
         return ffnn;
     }
 
-    Eigen::MatrixXf forward(const Eigen::MatrixXf& input) {
-        Eigen::MatrixXf prev_a = input;
-        for (size_t l = 1; l < depth; l++) {
-            
-            Eigen::MatrixXf z = (get_weight(l) * prev_a).colwise() + get_bias(l).col(0);
-            prev_a = nn_utils::activate(z, get_activation_func(l));
+    static FFNN from_file(const std::string& filename) {
+        std::ifstream file(filename, std::ios::binary);
+        if (!file.is_open()) {
+            throw std::runtime_error("from_file: could not open file");
         }
-        return prev_a;
+
+        // read len of network_shape
+        size_t network_shape_len;
+        file.read(reinterpret_cast<char*>(&network_shape_len), sizeof(size_t));
+
+        // read network_shape
+        std::vector<size_t> network_shape(network_shape_len);
+        file.read(reinterpret_cast<char*>(network_shape.data()), network_shape_len * sizeof(size_t));
+
+        // read activation functions
+        std::vector<ActivationFunc> activation_funcs(network_shape_len - 1);
+        file.read(reinterpret_cast<char*>(activation_funcs.data()), activation_funcs.size() * sizeof(ActivationFunc));
+
+        ForwardResult forward_result = ForwardResult(network_shape);
+        BackpropResult backprop_result = BackpropResult(network_shape);
+        FFNN ffnn(forward_result, backprop_result);
+        ffnn.depth = network_shape_len;
+        ffnn.network_shape = network_shape;
+        ffnn.activation_functions = activation_funcs;
+
+        // read weights and biases
+        for (size_t l = 1; l < ffnn.depth; l++) {
+            Eigen::MatrixXf weight(network_shape.at(l), network_shape.at(l - 1));
+            Eigen::MatrixXf bias(network_shape.at(l), 1);
+
+            file.read(reinterpret_cast<char*>(weight.data()), weight.size() * sizeof(float));
+            file.read(reinterpret_cast<char*>(bias.data()), bias.size() * sizeof(float));
+
+            ffnn.weights.push_back(weight);
+            ffnn.biases.push_back(bias);
+        }
+        
+        return ffnn;
     }
 
-    void forward(ForwardResult& forward_result) {
+    const Eigen::MatrixXf& forward(const Eigen::MatrixXf& input) {
+        forward_result.set_a(0, input);
+
         for (size_t l = 1; l < depth; l++) {
             Eigen::MatrixXf z = (get_weight(l) * forward_result.get_a(l - 1)).colwise() + get_bias(l).col(0);
             forward_result.set_z(l, z);
             forward_result.set_a(l, nn_utils::activate(z, get_activation_func(l)));
         }
+
+        return forward_result.get_a(depth - 1);
     }
 
     void backwards(const Eigen::MatrixXf& input, const Eigen::MatrixXf& target, CostType cost_type) {
@@ -88,8 +123,7 @@ struct FFNN {
             throw std::invalid_argument("from_random: categorical_cross_entropy cost requires softmax activation in output layer");
         }
 
-        forward_result.set_a(0, input);
-        forward(forward_result);
+        forward(input);
 
         backprop_result.get_cost() = nn_utils::cost(forward_result.get_a(depth - 1), target, cost_type);
 
@@ -117,6 +151,44 @@ struct FFNN {
             backprop_result.set_bias_gradient(l, this_error.rowwise().mean());
             
             prev_error = this_error;
+        }
+    }
+
+    void write_to_file(const std::string& filename) const {
+        // file format (in binary):
+        // length of network_shape
+        // input_size layer1_size layer2_size ... layerN_size
+        // activation_func1 activation_func2 ... activation_funcN-1
+        // weight matrix 1 (row major, values separated by spaces)
+        // bias vector 1 (values separated by spaces)
+        // weight matrix 2
+        // bias vector 2
+        // ...
+        // weight matrix N-1
+        // bias vector N-1
+
+        std::ofstream file(filename, std::ios::binary);
+        if (!file.is_open()) {
+            throw std::runtime_error("write_to_file: could not open file");
+        }
+
+        // write text length of network_shape
+        size_t network_shape_len = network_shape.size();
+        file.write(reinterpret_cast<const char*>(&network_shape_len), sizeof(size_t));
+
+        // write layer sizes
+        file.write(reinterpret_cast<const char*>(network_shape.data()), network_shape.size() * sizeof(size_t));
+
+        // write activation functions
+        file.write(reinterpret_cast<const char*>(activation_functions.data()), activation_functions.size() * sizeof(ActivationFunc));
+
+        // write weights and biases
+        for (size_t l = 1; l < depth; l++) {
+            const Eigen::MatrixXf& weight = get_weight(l);
+            const Eigen::MatrixXf& bias = get_bias(l);
+
+            file.write(reinterpret_cast<const char*>(weight.data()), weight.size() * sizeof(float));
+            file.write(reinterpret_cast<const char*>(bias.data()), bias.size() * sizeof(float));
         }
     }
 

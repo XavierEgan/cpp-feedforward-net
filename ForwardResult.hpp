@@ -5,7 +5,7 @@
 
 struct ForwardResult {
     ForwardResult() = delete;
-    ForwardResult(int depth, std::vector<size_t> network_shape) : depth(depth) {
+    ForwardResult(std::vector<size_t> network_shape) : depth(network_shape.size()) {
         zs.resize(depth - 1);
         as.resize(depth);
 

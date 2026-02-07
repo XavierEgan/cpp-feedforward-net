@@ -7,7 +7,7 @@
 
 struct BackpropResult {
     BackpropResult() = delete;
-    BackpropResult(int depth, std::vector<size_t> network_shape) : cost(0.0f), depth(depth) {
+    BackpropResult(std::vector<size_t> network_shape) : cost(0.0f), depth(network_shape.size()) {
         weight_gradients.resize(depth - 1);
         bias_gradients.resize(depth - 1);
 

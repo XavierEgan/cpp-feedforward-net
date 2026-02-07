@@ -142,6 +142,8 @@ int main() {
     }
 
     std::cout << "Total test correct: " << total_right << " Percentage right: " << (static_cast<float>(total_right) / static_cast<float>(test_data.images.size())) * 100.0f << "%" << std::endl;
+
+    ffnn.write_to_file("mnist_ffnn.dat");
 }
 
 /*

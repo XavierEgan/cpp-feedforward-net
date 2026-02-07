@@ -56,12 +56,6 @@ void get_batch(const std::vector<Eigen::MatrixXf>& inputs, const std::vector<Eig
     minibatch_targets.resize(targets.at(0).rows(), batch_size);
 
     for (int b = 0; b < batch_size; b++) {
-        // std::cout << "here" << std::endl;
-
-        // std::cout << "Minibatch size: " << get_matrix_shape_str(minibatch) << std::endl;
-
-        // std::cout << "LHS Shape: " << get_matrix_shape_str(minibatch.col(b)) << ", RHS Shape: " << get_matrix_shape_str(inputs.at(indices.at(b)).col(0)) << std::endl;
-        
         minibatch.col(b) = inputs.at(indices.at(b));
         minibatch_targets.col(b) = targets.at(indices.at(b));
     }
