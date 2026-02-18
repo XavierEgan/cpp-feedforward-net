@@ -17,11 +17,11 @@ float cost(const Eigen::MatrixXf& a, const Eigen::MatrixXf& y, CostType cost_typ
             return ((a - y).cwiseSquare() * 0.5).sum() / (a.rows() * a.cols());
         }
         case binary_cross_entropy: {
-            Eigen::ArrayXXf ac = a.array().min(1.0f - kProbEps).max(kProbEps);
+            Eigen::ArrayXXf ac = a.array().min(1.0f - k_prob_eps).max(k_prob_eps);
             return (-(y.array() * ac.log()) - (1.0f - y.array()) * (1.0f - ac).log()).sum() / (a.rows() * a.cols());
         }
         case categorical_cross_entropy: {
-            Eigen::ArrayXXf ac = a.array().min(1.0f - kProbEps).max(kProbEps);
+            Eigen::ArrayXXf ac = a.array().min(1.0f - k_prob_eps).max(k_prob_eps);
             return (-(y.array() * ac.log())).sum() / (a.rows() * a.cols());
         }
         default:
@@ -34,7 +34,7 @@ Eigen::MatrixXf cost_derivative(const Eigen::MatrixXf& a, const Eigen::MatrixXf&
         case quadratic:
             return a - y;
         case binary_cross_entropy: {
-            Eigen::ArrayXXf ac = a.array().min(1.0f - kProbEps).max(kProbEps);
+            Eigen::ArrayXXf ac = a.array().min(1.0f - k_prob_eps).max(k_prob_eps);
             return (-(y.array() / ac) + (1.0f - y.array()) / (1.0f - ac)).matrix();
         }
         // categorical cross-entropy and binary cross-entropy are guarenteed to be simplified because they are always paired with softmax and sigmoid respectively

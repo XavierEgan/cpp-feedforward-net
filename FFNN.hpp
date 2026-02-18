@@ -5,6 +5,7 @@
 #include "BackpropResult.hpp"
 #include "CostType.hpp"
 #include "ActivationFunction.hpp"
+#include "RegularizationType.hpp"
 
 #include <vector>
 #include <stdexcept>
@@ -20,11 +21,12 @@ struct FFNN {
     std::vector<ActivationFunc> activation_functions;
     std::vector<Eigen::MatrixXf> weights;
     std::vector<Eigen::MatrixXf> biases;
+    RegularizationType reg_type = RegularizationType::none;
 
     ForwardResult forward_result;
     BackpropResult backprop_result;
 
-    static FFNN from_random_he_scaling(const std::vector<size_t>& network_shape, const std::vector<ActivationFunc>& activation_funcs) {
+    static FFNN from_random_he_scaling(const std::vector<size_t>& network_shape, const std::vector<ActivationFunc>& activation_funcs, RegularizationType reg_type = RegularizationType::none) {
         size_t depth = network_shape.size();
 
         if (network_shape.size() != activation_funcs.size() + 1) {
@@ -49,6 +51,7 @@ struct FFNN {
         ffnn.depth = depth;
         ffnn.activation_functions = activation_funcs;
         ffnn.network_shape = network_shape;
+        ffnn.reg_type = reg_type;
 
         // weights = output x input
         // He-style scaling
@@ -114,7 +117,7 @@ struct FFNN {
         return forward_result.get_a(depth - 1);
     }
 
-    void backwards(const Eigen::MatrixXf& input, const Eigen::MatrixXf& target, CostType cost_type) {
+    void backwards(const Eigen::MatrixXf& input, const Eigen::MatrixXf& target, CostType cost_type, float reg_lambda = 1e-3f) {
         if (cost_type == CostType::binary_cross_entropy && activation_functions.back() != ActivationFunc::sigmoid) {
             throw std::invalid_argument("from_random: binary_cross_entropy cost requires sigmoid activation in output layer");
         }
@@ -137,7 +140,14 @@ struct FFNN {
         }
         Eigen::MatrixXf prev_error = output_error;
 
-        backprop_result.set_weight_gradient(depth - 1, output_error * forward_result.get_a(depth - 2).transpose() / input.cols());
+        Eigen::MatrixXf reg_mat = Eigen::MatrixXf::Zero(weights.back().rows(), weights.back().cols());
+        if (reg_type == RegularizationType::l2) {
+            reg_mat += reg_lambda * weights.back();
+        } else if (reg_type == RegularizationType::l1) {
+            reg_mat += reg_lambda * weights.back().cwiseSign();
+        }
+
+        backprop_result.set_weight_gradient(depth - 1, output_error * forward_result.get_a(depth - 2).transpose() / input.cols() + reg_mat);
         backprop_result.set_bias_gradient(depth - 1, output_error.rowwise().mean());
         
         // get error in all future layers
@@ -146,8 +156,15 @@ struct FFNN {
             // the error in the next layer
             // and the derivative of the activation function of this layer
             Eigen::MatrixXf this_error = (get_weight(l + 1).transpose() * prev_error).cwiseProduct(nn_utils::activate_der(forward_result.get_z(l), get_activation_func(l)));
-            
-            backprop_result.set_weight_gradient(l, this_error * forward_result.get_a(l - 1).transpose() / input.cols());
+
+            Eigen::MatrixXf reg_mat = Eigen::MatrixXf::Zero(get_weight(l).rows(), get_weight(l).cols());
+            if (reg_type == RegularizationType::l2) {
+                reg_mat += reg_lambda * get_weight(l);
+            } else if (reg_type == RegularizationType::l1) {
+                reg_mat += reg_lambda * get_weight(l).cwiseSign();
+            }
+
+            backprop_result.set_weight_gradient(l, this_error * forward_result.get_a(l - 1).transpose() / input.cols() + reg_mat);
             backprop_result.set_bias_gradient(l, this_error.rowwise().mean());
             
             prev_error = this_error;

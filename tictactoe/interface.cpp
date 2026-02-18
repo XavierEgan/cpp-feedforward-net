@@ -4,11 +4,12 @@
 #include "../FFNN.hpp"
 
 void play() {
-    TicTacToe game;
-    FFNN ffnn = FFNN::from_file("tictactoe/network.dat");
+    const int board_size = 4;
+    TicTacToe<board_size> game;
+    FFNN ffnn = FFNN::from_file("tictactoe/perfect_4x4.dat");
 
-    for (int i = 0; i < 9; i++) {
-        if (game.next_player == BoardSquare::X) {
+    for (int i = 0; i < board_size * board_size; i++) {
+        if (game.next_player == BoardSquare::O) {
             int player_move_x;
             int player_move_y;
             std::string player_move;
@@ -28,34 +29,17 @@ void play() {
             else continue;
 
             if (player_move_x < 0 || player_move_y < 0) continue;
-            if (player_move_x > 2 || player_move_y > 2) continue;
+            if (player_move_x >= board_size || player_move_y >= board_size) continue;
         
-            if (!game.play_move(player_move_x, player_move_y)) std::cout << "Could Not Play Move, Try again" << std::endl;
+            if (!game.play_move(player_move_y * board_size + player_move_x)) std::cout << "Could Not Play Move, Try again" << std::endl;
 
             
         } else {
             Eigen::MatrixXf board_state = game.get_board_state(game.next_player);
             Eigen::MatrixXf move_probabilities = ffnn.forward(board_state);
-            int move_index;
-            move_probabilities.col(0).maxCoeff(&move_index);
-            bool move_succeeded = game.play_move(move_index);
-
-            if (!move_succeeded) {
-                // that move was invalid, sort the matrix and play moves in order of likelyhood untill one works
-                std::vector<std::pair<float, int>> probabilities(9);
-                for (int i = 0; i < 9; i++) {
-                    probabilities[i] = std::pair<float, int>(move_probabilities(i), i);
-                }
-
-                std::sort(probabilities.begin(), probabilities.end(), [](const auto& a, const auto&  b){ return a.first > b.first; });
-
-                for (int i = 1; i < 9; i++) {
-                    if (game.play_move(probabilities[i].second)) {
-                        move_index = probabilities[i].second;
-                        break;
-                    }
-                }
-            }
+            
+            game.play_move(move_probabilities);
+            
         }
         
         if (game.check_winner() != BoardSquare::EMPTY) {

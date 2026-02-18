@@ -60,7 +60,7 @@ Dataset read_data(const std::string& data_loc) {
 
 
 int main() {
-    FFNN ffnn = FFNN::from_file("mnist_ffnn.dat");
+    FFNN ffnn = FFNN::from_file("mnist_ffnn_98_5_70000.dat");
 
     Dataset test_data = read_data("MNIST/MNIST/mnist_test.csv");
 

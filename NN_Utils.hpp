@@ -10,7 +10,7 @@
 
 namespace nn_utils {
 
-constexpr float kProbEps = 1e-7f;
+constexpr float k_prob_eps = 1e-7f;
 
 template<typename T>
 std::string get_matrix_shape_str(const T& m) {
@@ -29,15 +29,20 @@ void check_matrix_shape(const Eigen::MatrixXf& m, int rows, int cols, const std:
     }
 }
 
-void get_batch(const std::vector<Eigen::MatrixXf>& inputs, const std::vector<Eigen::MatrixXf>& targets, Eigen::MatrixXf& minibatch, Eigen::MatrixXf& minibatch_targets, int batch_size = -1) {
+void get_random_batch(const std::vector<Eigen::MatrixXf>& inputs, const std::vector<Eigen::MatrixXf>& targets, Eigen::MatrixXf& minibatch, Eigen::MatrixXf& minibatch_targets, int batch_size = -1) {
     if (inputs.size() != targets.size()) {
-        throw std::invalid_argument("get_batch: inputs and targets must be the same size");
+        throw std::invalid_argument("get_random_batch: inputs and targets must be the same size");
     }
     if (inputs.size() == 0) {
-        throw std::invalid_argument("get_batch: inputs and targets cannot be empty");
+        throw std::invalid_argument("get_random_batch: inputs and targets cannot be empty");
     }
 
     const int n =  inputs.size();
+
+    if (batch_size == -1) {
+        minibatch.resize(inputs.at(0).rows(), n);
+        minibatch_targets.resize(targets.at(0).rows(), n);
+    }
 
     if (batch_size <= 0) batch_size = n;
     if (batch_size > n) batch_size = n;
