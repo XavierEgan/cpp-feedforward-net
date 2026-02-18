@@ -29,7 +29,7 @@ void check_matrix_shape(const Eigen::MatrixXf& m, int rows, int cols, const std:
     }
 }
 
-void get_random_batch(const std::vector<Eigen::MatrixXf>& inputs, const std::vector<Eigen::MatrixXf>& targets, Eigen::MatrixXf& minibatch, Eigen::MatrixXf& minibatch_targets, int batch_size = -1) {
+void get_random_batch(const std::vector<Eigen::MatrixXf>& inputs, const std::vector<Eigen::MatrixXf>& targets, Eigen::MatrixXf& minibatch, Eigen::MatrixXf& minibatch_targets, int batch_size = -1, unsigned int seed = std::random_device{}()) {
     if (inputs.size() != targets.size()) {
         throw std::invalid_argument("get_random_batch: inputs and targets must be the same size");
     }
@@ -50,7 +50,7 @@ void get_random_batch(const std::vector<Eigen::MatrixXf>& inputs, const std::vec
     std::vector<int> indices(n);
     std::iota(indices.begin(), indices.end(), 0);
     
-    static thread_local std::mt19937 rng(std::random_device{}());
+    static thread_local std::mt19937 rng(seed);
 
     if (batch_size < n) {
         std::shuffle(indices.begin(), indices.end(), rng);

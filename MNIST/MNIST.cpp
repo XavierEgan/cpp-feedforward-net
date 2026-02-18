@@ -36,6 +36,7 @@ struct Dataset {
 
 struct Settings {
     int batch_size = 256;
+    int seed = 0;
     RegularizationType regularization_type = RegularizationType::none;
     nn_utils::LRSchedulerExponential lr_scheduler = nn_utils::LRSchedulerExponential::from_num_generation(1e-2, 1e-3, 30000);
     std::vector<size_t> layer_sizes =               {IMG_SIZE, 512, 256, 128, 64, 32, NUM_CLASSES};
@@ -121,12 +122,12 @@ int main() {
     _MM_SET_FLUSH_ZERO_MODE(_MM_FLUSH_ZERO_ON);
     _MM_SET_DENORMALS_ZERO_MODE(_MM_DENORMALS_ZERO_ON);
 
-    std::srand(0);
+    Settings settings;
+    std::srand(settings.seed);
 
     Eigen::setNbThreads(std::thread::hardware_concurrency() / 2);
     std::cout << "num htreads: " << Eigen::nbThreads() << std::endl;
 
-    Settings settings;
     Dataset train_data = read_data("MNIST/MNIST/mnist_train.csv");
     Dataset test_data = read_data("MNIST/MNIST/mnist_test.csv");
 
@@ -144,7 +145,7 @@ int main() {
     while (!settings.lr_scheduler.is_done()) {
         auto start_time = std::chrono::high_resolution_clock::now();
 
-        nn_utils::get_random_batch(train_data.images, train_data.labels, minibatch, minibatch_target, settings.batch_size);
+        nn_utils::get_random_batch(train_data.images, train_data.labels, minibatch, minibatch_target, settings.batch_size, settings.seed);
 
         optimiser.lr = settings.lr_scheduler.lr;
         float avg_cost = optimiser.step(minibatch, minibatch_target);
