@@ -205,14 +205,12 @@ struct TicTacToe {
     }
 
     int get_board_eval(int max_depth = 9999) {
-        bool maximising = next_player == BoardSquare::X;
-        return minimax(maximising, -9999, 9999, max_depth - 1);
+        return minimax(-9999, 9999, max_depth - 1);
     }
 
     int get_move_eval(int move, int max_depth = 9999) {
-        bool maximising = next_player == BoardSquare::X;
         play_move(move);
-        int move_val = minimax(!maximising, -9999, 9999, max_depth);
+        int move_val = minimax(-9999, 9999, max_depth);
         unplay_move(move);
         return move_val;
     }
@@ -271,7 +269,42 @@ struct TicTacToe {
     }
 
 private:
-    int minimax(bool maximising, int alpha, int beta, int depth, int prev_move = -1) {
+    // returns how good the move is under some heuristics (larger is better)
+    // max return is 1
+    float get_heuristic(int move) {
+        // heuristics:
+        // 1) block N in a rows - 1.0f
+        // 2) create forks - 1.0f
+        // 3) play towards the middle - 
+
+        float heuristic = 0.0f;
+
+        int move_x = move % N;
+        int move_y = move / N;
+
+        // if it blocks an N in a row then its good
+        // check if it blocks a row (if everything other than us is the opponent)
+        bool all_are_opponent = true;
+        for (int i = 0; i < N; i++) {
+            if (i == move_x) continue;
+            if (at(i, move_y) == EMPTY || at(i, move_y) == next_player) {all_are_opponent = false; break;}
+        }
+        if (all_are_opponent) return 1.0f;
+
+        // check col
+        all_are_opponent = true;
+        for (int i = 0; i < N; i++) {
+            if (i == move_y) continue;
+            if (at(move_x, i) == EMPTY || at(move_x, i) == next_player) {all_are_opponent = false; break;}
+        }
+        if (all_are_opponent) return 1.0f;
+
+        // check diag top left to bottom right
+
+        return 0.0f;
+    }
+
+    int minimax(int alpha, int beta, int depth, int prev_move = -1) {
         if (prev_move == -1) {
             BoardSquare winner = check_winner();
             if (winner != BoardSquare::EMPTY) return winner == BoardSquare::X ? 1 : -1;
@@ -282,16 +315,29 @@ private:
 
         if (depth <= 0) return 0;
 
+        bool maximising = next_player == X;
         if (maximising) {
-            int max_val = -9999;
+            std::array<std::pair<float, int>, N * N> move_buffer;
+            int count = 0;
+
             int move_count = 0;
+
             for (int move = 0; move < N * N; move++) {
                 if (board[move] != BoardSquare::EMPTY) continue;
-
                 move_count++;
+                move_buffer[count++] = std::pair<float, int>(get_heuristic(move), move);
+            }
+
+            if (move_count == 0) return 0;
+
+            std::sort(move_buffer.begin(), move_buffer.begin() + count, [](std::pair<float, int> a, std::pair<float, int> b) { return a.first > b.first; });
+
+            int max_val = -9999;
+            for (int i = 0; i < count; i++) {
+                int move = move_buffer[i].second;
 
                 play_move(move);
-                int val = minimax(!maximising, alpha, beta, depth - 1, move);
+                int val = minimax(alpha, beta, depth - 1, move);
                 unplay_move(move);
                 
                 max_val = std::max(val, max_val);
@@ -299,19 +345,30 @@ private:
 
                 if (beta <= alpha) break;
             }
-            if (move_count == 0) return 0;
             return max_val;
 
         } else {
-            int min_val = 9999;
+            std::array<std::pair<float, int>, N * N> move_buffer;
+            int count = 0;
+
             int move_count = 0;
+
             for (int move = 0; move < N * N; move++) {
                 if (board[move] != BoardSquare::EMPTY) continue;
-
                 move_count++;
+                move_buffer[count++] = std::pair<float, int>(get_heuristic(move), move);
+            }
+
+            if (move_count == 0) return 0;
+
+            std::sort(move_buffer.begin(), move_buffer.begin() + count, [](std::pair<float, int> a, std::pair<float, int> b) { return a.first > b.first; });
+
+            int min_val = 9999;
+            for (int i = 0; i < count; i++) {
+                int move = move_buffer[i].second;
 
                 play_move(move);
-                int val = minimax(!maximising, alpha, beta, depth - 1, move);
+                int val = minimax(alpha, beta, depth - 1, move);
                 unplay_move(move);
                 
                 min_val = std::min(val, min_val);
@@ -322,5 +379,5 @@ private:
             if (move_count == 0) return 0;
             return min_val;
         }
-    } 
+    }
 };
