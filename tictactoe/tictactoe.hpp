@@ -5,6 +5,7 @@
 #include <vector>
 #include <array>
 #include <random>
+#include <algorithm>
 
 enum BoardSquare {
     EMPTY,
@@ -200,32 +201,55 @@ struct TicTacToe {
         next_player = BoardSquare::X;
     }
 
-    int minimax(bool maximising) {
+    int minimax(bool maximising, int alpha, int beta, int depth) {
+        if (depth == 0) return 0;
+
         BoardSquare winner = check_winner();
         if (winner != BoardSquare::EMPTY) return winner == BoardSquare::X ? 1 : -1;
 
-        int max_val = -9999;
-        int min_val = 9999;
+        if (maximising) {
+            int max_val = -9999;
+            int move_count = 0;
+            for (int move = 0; move < N * N; move++) {
+                if (board[move] != BoardSquare::EMPTY) continue;
 
-        int move_count = 0; // check for draw
+                move_count++;
 
-        for (int move = 0; move < N * N; move++) {
-            if (board[move] != BoardSquare::EMPTY) continue;
-            move_count++;
+                play_move(move);
+                int val = minimax(!maximising, alpha, beta, depth - 1);
+                unplay_move(move);
+                
+                max_val = std::max(val, max_val);
+                alpha = std::max(val, alpha);
 
-            play_move(move);
-            int val = minimax(!maximising);
-            unplay_move(move);
-            
-            if (val > max_val) max_val = val;
-            if (val < min_val) min_val = val;
+                if (beta <= alpha) break;
+            }
+            if (move_count == 0) return 0;
+            return max_val;
+
+        } else {
+            int min_val = 9999;
+            int move_count = 0;
+            for (int move = 0; move < N * N; move++) {
+                if (board[move] != BoardSquare::EMPTY) continue;
+
+                move_count++;
+
+                play_move(move);
+                int val = minimax(!maximising, alpha, beta, depth - 1);
+                unplay_move(move);
+                
+                min_val = std::min(val, min_val);
+                beta = std::min(val, beta);
+
+                if (beta <= alpha) break;
+            }
+            if (move_count == 0) return 0;
+            return min_val;
         }
-
-        if (move_count == 0) return 0;
-        return maximising ? max_val : min_val;
     } 
 
-    int get_best_move() {
+    int get_best_move(int max_depth = 9999, int seed = 0) {
         bool maximising = next_player == BoardSquare::X;
 
         int max_val = -9999;
@@ -238,7 +262,7 @@ struct TicTacToe {
             if (board[move] != BoardSquare::EMPTY) continue;
             
             play_move(move);
-            int move_val = minimax(!maximising);
+            int move_val = minimax(!maximising, -9999, 9999, max_depth);
             unplay_move(move);
 
             std::cout << "Move: " << move << " Val: " << move_val << std::endl;

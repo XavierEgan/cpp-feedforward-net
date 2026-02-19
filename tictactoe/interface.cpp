@@ -36,7 +36,6 @@ void play() {
         
             if (!game.play_move(player_move_y * board_size + player_move_x)) std::cout << "Could Not Play Move, Try again" << std::endl;
             i--;
-
             
         } else {
             Eigen::MatrixXf board_state = game.get_board_state(game.next_player);
