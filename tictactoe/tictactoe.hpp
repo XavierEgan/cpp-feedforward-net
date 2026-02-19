@@ -182,7 +182,7 @@ struct TicTacToe {
         if (move_x == move_y) {
             bool diag_tlbr_win = true;
             for (int i = 0; i < N * N; i += N + 1) {
-                if (at(i) != start_square) diag_tlbr_win = false;
+                if (at(i) != start_square) {diag_tlbr_win = false; break;}
             }
             if (diag_tlbr_win) return start_square;
         }
@@ -191,7 +191,7 @@ struct TicTacToe {
         if (move_x + move_y == N - 1) {
             bool diag_trbl_win = true;
             for (int i = N - 1; i < N * N - 1; i += N - 1) {
-                if (at(i) != start_square) diag_trbl_win = false;
+                if (at(i) != start_square) {diag_trbl_win = false; break;}
             }
             if (diag_trbl_win) return start_square;
         }
@@ -299,7 +299,25 @@ private:
         }
         if (all_are_opponent) return 1.0f;
 
-        // check diag top left to bottom right
+        // check top left to bottom right
+        if (move_x == move_y) {
+            all_are_opponent = true;
+            for (int i = 0; i < N * N; i += N + 1) {
+                if (i == move) continue;
+                if (at(i) == EMPTY || at(i) == next_player) {all_are_opponent = false; break;}
+            }
+            if (all_are_opponent) return 1.0f;
+        }
+
+        // check top right to bottom left
+        if (move_x + move_y == N - 1) {
+            all_are_opponent = true;
+            for (int i = N - 1; i < N * N - 1; i += N - 1) {
+                if (i == move) continue;
+                if (at(i) == EMPTY || at(i) == next_player) {all_are_opponent = false; break;}
+            }
+            if (all_are_opponent) return 1.0f;
+        }
 
         return 0.0f;
     }
