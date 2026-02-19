@@ -32,6 +32,9 @@ struct TicTacToe {
     TicTacToe() {
         board.fill(BoardSquare::EMPTY);
         next_player = BoardSquare::X;
+        if (N < 2) {
+            throw std::length_error("N should not be less than 2");
+        }
     }
 
     BoardSquare at(int index) const {
@@ -269,20 +272,7 @@ struct TicTacToe {
     }
 
 private:
-    // returns how good the move is under some heuristics (larger is better)
-    // max return is 1
-    float get_heuristic(int move) {
-        // heuristics:
-        // 1) block N in a rows - 1.0f
-        // 2) create forks - 1.0f
-        // 3) play towards the middle - 
-
-        float heuristic = 0.0f;
-
-        int move_x = move % N;
-        int move_y = move / N;
-
-        // if it blocks an N in a row then its good
+    float get_block_heuristic(int move_x, int move_y, int move) {
         // check if it blocks a row (if everything other than us is the opponent)
         bool all_are_opponent = true;
         for (int i = 0; i < N; i++) {
@@ -320,6 +310,77 @@ private:
         }
 
         return 0.0f;
+    }
+
+    float fork_heuristic(int move_x, int move_y, int move) {
+        int num_threats = 0;
+
+        // check row
+        int num_us = 1;
+        for (int i = 0; i < N; i++) {
+            if (i == move_x) continue;
+            if (at(i, move_y) == EMPTY || at(i, move_y) != next_player) continue;
+            num_us++;
+        }
+        if (num_us == N - 1) num_threats++;
+
+        // check col
+        num_us = 1;
+        for (int i = 0; i < N; i++) {
+            if (i == move_y) continue;
+            if (at(move_x, i) == EMPTY || at(move_x, i) != next_player) continue;
+            num_us++;
+        }
+        if (num_us == N - 1) num_threats++;
+
+        // check top left to bottom right
+        if (move_x == move_y) {
+            num_us = 1;
+            for (int i = 0; i < N * N; i += N + 1) {
+                if (i == move) continue;
+                if (at(i) == EMPTY || at(i) != next_player) continue;
+                num_us++;
+            }
+            if (num_us == N - 1) num_threats++;
+        }
+
+        // check top right to bottom left
+        if (move_x + move_y == N - 1) {
+            num_us = 1;
+            for (int i = N - 1; i < N * N - 1; i += N - 1) {
+                if (i == move) continue;
+                if (at(i) == EMPTY || at(i) != next_player) continue;
+                num_us++;
+            }
+            if (num_us == N - 1) num_threats++;
+        }
+
+        if (num_threats > 1) return 1.0f;
+        if (num_threats == 1) return 0.5f;
+        return 0.0f;
+    }
+
+    // returns how good the move is under some heuristics (larger is better)
+    // max return is 1
+    float get_heuristic(int move) {
+        // heuristics:
+        // 1) block N in a rows - 1.0f
+        // 2) create forks - 1.0f
+        // 3) create threats - 0.5f
+        // 3) play towards the middle - 0.2f
+
+        float heuristic = 0.0f;
+
+        int move_x = move % N;
+        int move_y = move / N;
+
+        heuristic = get_block_heuristic(move_x, move_y, move);
+        if (heuristic == 1.0f) return heuristic;
+
+        //heuristic = fork_heuristic(move_x, move_y, move);
+        if (heuristic == 1.0f) return heuristic;
+
+        return heuristic;
     }
 
     int minimax(int alpha, int beta, int depth, int prev_move = -1) {
