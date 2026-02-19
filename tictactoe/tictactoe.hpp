@@ -88,48 +88,6 @@ struct TicTacToe {
         return true;
     }
 
-    void play_move(Eigen::MatrixXf move_probabilities, float epsilon=0.0f) {
-        int move_index;
-        std::random_device rd;
-        std::mt19937 gen(rd());
-        std::uniform_real_distribution<> uniform(0.0, 1.0);
-
-        if (uniform(gen) < epsilon) {
-            // get all valid moves
-            std::vector<int> valid_moves;
-            for (int i = 0; i < N * N; i++) {
-                if (at(i) == BoardSquare::EMPTY) valid_moves.push_back(i);
-            }
-            
-            // pick a random valid move
-            std::uniform_int_distribution<> distrib(0, valid_moves.size() - 1);
-            move_index = valid_moves[distrib(gen)];
-        } else {
-            std::discrete_distribution<> distrib(move_probabilities.data(), move_probabilities.data() + move_probabilities.size());
-            move_index = distrib(gen);
-        }
-        
-        // try do the move
-        bool move_succeeded = play_move(move_index);
-        
-        if (!move_succeeded) {
-            // that move was invalid, sort the matrix and play moves in order of likelyhood untill one works
-            std::vector<std::pair<float, int>> probabilities(N * N);
-            for (int i = 0; i < N * N; i++) {
-                probabilities[i] = std::pair<float, int>(move_probabilities(i), i);
-            }
-
-            std::sort(probabilities.begin(), probabilities.end(), [](const auto& a, const auto&  b){ return a.first > b.first; });
-
-            for (int i = 1; i < N * N; i++) {
-                if (play_move(probabilities[i].second)) {
-                    move_index = probabilities[i].second;
-                    break;
-                }
-            }
-        }
-    }
-
     // returns BoardSquare::EMPTY if there is no winner
     // returns the winner if there is a winner
     BoardSquare check_winner() const {
@@ -196,16 +154,133 @@ struct TicTacToe {
         return BoardSquare::EMPTY;
     }
 
+    // returns BoardSquare::EMPTY if there is no winner
+    // returns the winner if there is a winner
+    // most_recent_move makes it more efficient
+    BoardSquare check_winner(int most_recent_move) const {
+        int move_x = most_recent_move % N;
+        int move_y = most_recent_move / N;
+
+        BoardSquare start_square = at(most_recent_move);
+        if (start_square == BoardSquare::EMPTY) return BoardSquare::EMPTY;
+
+        // check col
+        bool col_win = true;
+        for (int i = 0; i < N; i++) {
+            if (at(move_x, i) != start_square) col_win = false;
+        }
+        if (col_win) return start_square;
+
+        // check row
+        bool row_win = true;
+        for (int i = 0; i < N; i++) {
+            if (at(i, move_y) != start_square) row_win = false;
+        }
+        if (row_win) return start_square;
+
+        // check top left to bottom right
+        if (move_x == move_y) {
+            bool diag_tlbr_win = true;
+            for (int i = 0; i < N * N; i += N + 1) {
+                if (at(i) != start_square) diag_tlbr_win = false;
+            }
+            if (diag_tlbr_win) return start_square;
+        }
+
+        // check top right to bottom left
+        if (move_x + move_y == N - 1) {
+            bool diag_trbl_win = true;
+            for (int i = N - 1; i < N * N - 1; i += N - 1) {
+                if (at(i) != start_square) diag_trbl_win = false;
+            }
+            if (diag_trbl_win) return start_square;
+        }
+
+        return BoardSquare::EMPTY;
+    }
+    
     void restart() {
         for (int i = 0; i < N * N; i++) board[i] = BoardSquare::EMPTY;
         next_player = BoardSquare::X;
     }
 
-    int minimax(bool maximising, int alpha, int beta, int depth) {
-        if (depth == 0) return 0;
+    int get_board_eval(int max_depth = 9999) {
+        bool maximising = next_player == BoardSquare::X;
+        return minimax(maximising, -9999, 9999, max_depth - 1);
+    }
 
-        BoardSquare winner = check_winner();
-        if (winner != BoardSquare::EMPTY) return winner == BoardSquare::X ? 1 : -1;
+    int get_move_eval(int move, int max_depth = 9999) {
+        bool maximising = next_player == BoardSquare::X;
+        play_move(move);
+        int move_val = minimax(!maximising, -9999, 9999, max_depth);
+        unplay_move(move);
+        return move_val;
+    }
+
+    int get_best_move(int max_depth = 9999, int seed = std::random_device{}()) {
+        bool maximising = next_player == BoardSquare::X;
+
+        if (maximising) {
+            int max_val = -9999;
+            int max_move = -1;
+            std::vector<int> max_moves;
+
+            for (int move = 0; move < N * N; move++) {
+                if (board[move] != BoardSquare::EMPTY) continue;
+                
+                int move_val = get_move_eval(move, max_depth - 1);
+
+                std::cout << "Move: " << move << " Val: " << move_val << std::endl;
+
+                if (move_val > max_val) {
+                    max_val = move_val;
+                    max_move = move;
+                    max_moves.clear();
+                }
+                if (move_val == max_val) max_moves.push_back(move);
+            }
+
+            std::mt19937 gen(seed);
+            std::uniform_int_distribution<> distrib(0, max_moves.size() - 1);
+            return max_moves[distrib(gen)];
+            
+        } else {
+            int min_val = 9999; 
+            int min_move = -1;
+            std::vector<int> min_moves;
+
+            for (int move = 0; move < N * N; move++) {
+                if (board[move] != BoardSquare::EMPTY) continue;
+                
+                int move_val = get_move_eval(move, max_depth - 1);
+
+                std::cout << "Move: " << move << " Val: " << move_val << std::endl;
+
+                if (move_val < min_val) {
+                    min_val = move_val;
+                    min_move = move;
+                    min_moves.clear();
+                }
+                if (move_val == min_val) min_moves.push_back(move);
+            }
+
+            std::mt19937 gen(seed);
+            std::uniform_int_distribution<> distrib(0, min_moves.size() - 1);
+            return min_moves[distrib(gen)];
+        }
+    }
+
+private:
+    int minimax(bool maximising, int alpha, int beta, int depth, int prev_move = -1) {
+        if (prev_move == -1) {
+            BoardSquare winner = check_winner();
+            if (winner != BoardSquare::EMPTY) return winner == BoardSquare::X ? 1 : -1;
+        } else {
+            BoardSquare winner = check_winner(prev_move);
+            if (winner != BoardSquare::EMPTY) return winner == BoardSquare::X ? 1 : -1;
+        }
+
+        if (depth <= 0) return 0;
 
         if (maximising) {
             int max_val = -9999;
@@ -216,7 +291,7 @@ struct TicTacToe {
                 move_count++;
 
                 play_move(move);
-                int val = minimax(!maximising, alpha, beta, depth - 1);
+                int val = minimax(!maximising, alpha, beta, depth - 1, move);
                 unplay_move(move);
                 
                 max_val = std::max(val, max_val);
@@ -236,7 +311,7 @@ struct TicTacToe {
                 move_count++;
 
                 play_move(move);
-                int val = minimax(!maximising, alpha, beta, depth - 1);
+                int val = minimax(!maximising, alpha, beta, depth - 1, move);
                 unplay_move(move);
                 
                 min_val = std::min(val, min_val);
@@ -248,36 +323,4 @@ struct TicTacToe {
             return min_val;
         }
     } 
-
-    int get_best_move(int max_depth = 9999, int seed = 0) {
-        bool maximising = next_player == BoardSquare::X;
-
-        int max_val = -9999;
-        int min_val = 9999; 
-
-        int max_move = -1;
-        int min_move = -1;
-
-        for (int move = 0; move < N * N; move++) {
-            if (board[move] != BoardSquare::EMPTY) continue;
-            
-            play_move(move);
-            int move_val = minimax(!maximising, -9999, 9999, max_depth);
-            unplay_move(move);
-
-            std::cout << "Move: " << move << " Val: " << move_val << std::endl;
-
-            if (move_val > max_val) {
-                max_val = move_val;
-                max_move = move;
-            }
-
-            if (move_val < min_val) {
-                min_val = move_val;
-                min_move = move;
-            }
-        }
-
-        return maximising ? max_move : min_move;
-    }
 };
