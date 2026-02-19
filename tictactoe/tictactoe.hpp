@@ -3,6 +3,7 @@
 #include <iostream>
 #include <string>
 #include <vector>
+#include <array>
 #include <random>
 
 enum BoardSquare {
@@ -25,30 +26,24 @@ template<int N>
 struct TicTacToe {
     BoardSquare next_player;
     int num_pieces = N;
-    std::vector<BoardSquare> board;
-
-    // board state before the player takes a move
-    std::vector<Eigen::MatrixXf> player_x_game_history;
-    std::vector<Eigen::MatrixXf> player_o_game_history;
-    std::vector<int> player_x_moves;
-    std::vector<int> player_o_moves;
+    std::array<BoardSquare, N * N> board;
 
     TicTacToe() {
-        board = std::vector<BoardSquare>(N * N, BoardSquare::EMPTY);
+        board.fill(BoardSquare::EMPTY);
         next_player = BoardSquare::X;
     }
 
     BoardSquare at(int index) const {
-        return board.at(index);
+        return board[index];
     }
     BoardSquare& at(int index) {
-        return board.at(index);
+        return board[index];
     }
     BoardSquare at(int x, int y) const {
-        return board.at(y * N + x);
+        return board[y * N + x];
     }
     BoardSquare& at(int x, int y) {
-        return board.at(y * N + x);
+        return board[y * N + x];
     }
 
     Eigen::MatrixXf get_board_state(BoardSquare player) {
@@ -77,17 +72,16 @@ struct TicTacToe {
     bool play_move(int i) {
         if (at(i) != BoardSquare::EMPTY) return false;
 
-        // note down the board state and move played BEFORE updating board (because we need to train on the board state before the move to predict the move)
-        if (next_player == BoardSquare::X) {
-            player_x_game_history.push_back(get_board_state(BoardSquare::X));
-            player_x_moves.push_back(i);
-        } else {
-            player_o_game_history.push_back(get_board_state(BoardSquare::O));
-            player_o_moves.push_back(i);
-        }
-
         at(i) = next_player;
+        next_player = next_player == BoardSquare::O ? BoardSquare::X : BoardSquare::O;
 
+        return true;
+    }
+
+    bool unplay_move(int i) {
+        if (at(i) == BoardSquare::EMPTY) return false;
+
+        at(i) = BoardSquare::EMPTY;
         next_player = next_player == BoardSquare::O ? BoardSquare::X : BoardSquare::O;
 
         return true;
@@ -137,7 +131,7 @@ struct TicTacToe {
 
     // returns BoardSquare::EMPTY if there is no winner
     // returns the winner if there is a winner
-    BoardSquare check_winner() {
+    BoardSquare check_winner() const {
         // check rows
         for (int y = 0; y < N; y++) {
             BoardSquare first_square = at(0, y);
@@ -200,35 +194,66 @@ struct TicTacToe {
 
         return BoardSquare::EMPTY;
     }
-    
-    void append_player_positive_example(std::vector<Eigen::MatrixXf>& inputs, std::vector<Eigen::MatrixXf>& targets, BoardSquare player) {
-        std::vector<Eigen::MatrixXf>& player_game_history = player == BoardSquare::X ? player_x_game_history : player_o_game_history;
-        std::vector<int>& player_moves = player == BoardSquare::X ? player_x_moves : player_o_moves;
-
-        for (size_t i = 0; i < player_game_history.size(); i++) {
-            // add the board state as an input
-            inputs.push_back(player_game_history[i]);
-
-            // add the move played as a target
-            Eigen::MatrixXf target = Eigen::MatrixXf::Zero(N * N, 1);
-            target(player_moves[i], 0) = 1.0f;
-            targets.push_back(target);
-        }
-    }
-    void append_player_x_positive_example(std::vector<Eigen::MatrixXf>& inputs, std::vector<Eigen::MatrixXf>& targets) {
-        append_player_positive_example(inputs, targets, BoardSquare::X);
-    }
-    void append_player_o_positive_example(std::vector<Eigen::MatrixXf>& inputs, std::vector<Eigen::MatrixXf>& targets) {        
-        append_player_positive_example(inputs, targets, BoardSquare::O);
-    }
 
     void restart() {
         for (int i = 0; i < N * N; i++) board[i] = BoardSquare::EMPTY;
         next_player = BoardSquare::X;
+    }
 
-        player_x_game_history.clear();
-        player_o_game_history.clear();
-        player_x_moves.clear();
-        player_o_moves.clear();
+    int minimax(bool maximising) {
+        BoardSquare winner = check_winner();
+        if (winner != BoardSquare::EMPTY) return winner == BoardSquare::X ? 1 : -1;
+
+        int max_val = -9999;
+        int min_val = 9999;
+
+        int move_count = 0; // check for draw
+
+        for (int move = 0; move < N * N; move++) {
+            if (board[move] != BoardSquare::EMPTY) continue;
+            move_count++;
+
+            play_move(move);
+            int val = minimax(!maximising);
+            unplay_move(move);
+            
+            if (val > max_val) max_val = val;
+            if (val < min_val) min_val = val;
+        }
+
+        if (move_count == 0) return 0;
+        return maximising ? max_val : min_val;
+    } 
+
+    int get_best_move() {
+        bool maximising = next_player == BoardSquare::X;
+
+        int max_val = -9999;
+        int min_val = 9999; 
+
+        int max_move = -1;
+        int min_move = -1;
+
+        for (int move = 0; move < N * N; move++) {
+            if (board[move] != BoardSquare::EMPTY) continue;
+            
+            play_move(move);
+            int move_val = minimax(!maximising);
+            unplay_move(move);
+
+            std::cout << "Move: " << move << " Val: " << move_val << std::endl;
+
+            if (move_val > max_val) {
+                max_val = move_val;
+                max_move = move;
+            }
+
+            if (move_val < min_val) {
+                min_val = move_val;
+                min_move = move;
+            }
+        }
+
+        return maximising ? max_move : min_move;
     }
 };

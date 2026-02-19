@@ -3,10 +3,13 @@
 #include "tictactoe.hpp"
 #include "../FFNN.hpp"
 
+#include <iostream>
+#include <time.h>
+
 void play() {
     const int board_size = 4;
     TicTacToe<board_size> game;
-    FFNN ffnn = FFNN::from_file("tictactoe/perfect_4x4.dat");
+    //FFNN ffnn = FFNN::from_file("tictactoe/perfect_4x4.dat");
 
     for (int i = 0; i < board_size * board_size; i++) {
         if (game.next_player == BoardSquare::O) {
@@ -32,14 +35,23 @@ void play() {
             if (player_move_x >= board_size || player_move_y >= board_size) continue;
         
             if (!game.play_move(player_move_y * board_size + player_move_x)) std::cout << "Could Not Play Move, Try again" << std::endl;
+            i--;
 
             
         } else {
             Eigen::MatrixXf board_state = game.get_board_state(game.next_player);
-            Eigen::MatrixXf move_probabilities = ffnn.forward(board_state);
+            // Eigen::MatrixXf move_probabilities = ffnn.forward(board_state);
             
-            game.play_move(move_probabilities);
-            
+            // game.play_move(move_probabilities);
+            // time how long it takes
+            clock_t start = clock();
+
+            int move = game.get_best_move();
+
+            clock_t end = clock();
+            double elapsed = double(end - start) / CLOCKS_PER_SEC;
+            std::cout << "AI move: " << move << " (calculated in " << elapsed << " seconds)" << std::endl;
+            game.play_move(move);
         }
         
         if (game.check_winner() != BoardSquare::EMPTY) {

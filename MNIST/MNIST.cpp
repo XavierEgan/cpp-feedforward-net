@@ -128,8 +128,8 @@ int main() {
     Eigen::setNbThreads(std::thread::hardware_concurrency() / 2);
     std::cout << "num htreads: " << Eigen::nbThreads() << std::endl;
 
-    Dataset train_data = read_data("MNIST/MNIST/mnist_train.csv");
-    Dataset test_data = read_data("MNIST/MNIST/mnist_test.csv");
+    Dataset train_data = read_data("MNIST/Fashion-MNIST/train.csv");
+    Dataset test_data = read_data("MNIST/Fashion-MNIST/test.csv");
 
     FFNN ffnn = FFNN::from_random_he_scaling(
         settings.layer_sizes,
