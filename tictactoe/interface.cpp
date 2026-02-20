@@ -2,12 +2,21 @@
 
 #include "tictactoe.hpp"
 #include "../FFNN.hpp"
+#include "./Agent.hpp"
+#include "./agentTools.hpp"
 
 #include <iostream>
 #include <time.h>
 
 void play() {
-    const int board_size = 4;
+    const int board_size = 6;
+
+    MinimaxAgent<board_size> mini_shallow(2);
+    MinimaxAgent<board_size> mini_deep(3);
+
+    compare_agents<board_size, MinimaxAgent<board_size>, MinimaxAgent<board_size>>(mini_shallow, mini_deep);
+
+    return;
     TicTacToe<board_size> game;
     //FFNN ffnn = FFNN::from_file("tictactoe/perfect_4x4.dat");
 
@@ -43,9 +52,11 @@ void play() {
             
             // game.play_move(move_probabilities);
             // time how long it takes
+
+            MinimaxAgent<board_size, 3> agent;
             clock_t start = clock();
 
-            int move = game.get_best_move(10);
+            int move = agent.get_move(game);
 
             clock_t end = clock();
             double elapsed = double(end - start) / CLOCKS_PER_SEC;
@@ -53,9 +64,9 @@ void play() {
             game.play_move(move);
         }
         
-        if (game.check_winner() != BoardSquare::EMPTY) {
+        if (game.get_winner() != BoardSquare::EMPTY) {
             game.print_board();
-            std::cout << square_to_char(game.check_winner()) << " is the winner!" << std::endl;
+            std::cout << square_to_char(game.get_winner()) << " is the winner!" << std::endl;
             break;
         }
     }
