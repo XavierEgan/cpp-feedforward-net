@@ -6,11 +6,75 @@
 #include <array>
 #include <random>
 #include <algorithm>
+#include <unordered_map>
 
 enum BoardSquare {
-    EMPTY,
-    X,
-    O
+    X = 0,
+    O = 1,
+    EMPTY = 2,
+};
+
+enum NodeType {
+    EXACT,
+    LOWER,
+    UPPER
+};
+
+
+struct TranspositionTableEntry {
+    int score;
+    int depth;
+    NodeType type;
+};
+
+template<int BOARD_SIDE_LEN, int MAX_ELEMENTS = 65536>
+struct TranspositionTable {
+    long long x_to_move;
+    std::unordered_map<long long, TranspositionTableEntry> map;
+    std::vector<long long> rand_numbers;
+
+    TranspositionTable() {
+        rand_numbers.reserve(BOARD_SIDE_LEN * BOARD_SIDE_LEN * 2);
+        std::mt19937 mt_generator(std::random_device{}());
+        for (int i = 0; i < BOARD_SIDE_LEN * BOARD_SIDE_LEN * 2; i++) {
+            rand_numbers.push_back(mt_generator());
+        }
+
+        x_to_move = mt_generator();
+
+        map.reserve(MAX_ELEMENTS);
+    }
+
+    long long hash(const std::array<BoardSquare, BOARD_SIDE_LEN * BOARD_SIDE_LEN> &board, BoardSquare player_turn) {
+        long long h = 0;
+        if (player_turn == BoardSquare::X) {
+            h ^= x_to_move;
+        }
+
+        for (int i = 0; i < BOARD_SIDE_LEN * BOARD_SIDE_LEN; i++) {
+            if (board[i] == BoardSquare::EMPTY) continue;
+            long long j = board[i];
+            h ^= rand_numbers[i * 2 + j];
+        }
+
+        return h;
+    }
+
+    void insert(long long key, const TranspositionTableEntry& entry) {
+        if (map.size() >= MAX_ELEMENTS) {
+            map.erase(map.begin());
+        }
+
+        map[key] = entry;
+    }
+
+    bool contains(long long key) {
+        return map.contains(key);
+    }
+
+    TranspositionTableEntry get(long long key) {
+        return map.find(key)->second;
+    }
 };
 
 char square_to_char(BoardSquare square) {
@@ -272,6 +336,8 @@ struct TicTacToe {
     }
 
 private:
+    TranspositionTable<N, 1048576> table;
+
     float block_heuristic(int move_x, int move_y, int move) {
         // check if it blocks a row (if everything other than us is the opponent)
         bool all_are_opponent = true;
@@ -428,67 +494,66 @@ private:
         if (depth <= 0) return 0;
 
         bool maximising = next_player == X;
-        if (maximising) {
-            std::array<std::pair<float, int>, N * N> move_buffer;
-            int count = 0;
+        
+        std::array<std::pair<float, int>, N * N> move_buffer;
+        int count = 0;
 
-            int move_count = 0;
+        int move_count = 0;
 
-            for (int move = 0; move < N * N; move++) {
-                if (board[move] != BoardSquare::EMPTY) continue;
-                move_count++;
-                move_buffer[count++] = std::pair<float, int>(get_heuristic(move), move);
+        for (int move = 0; move < N * N; move++) {
+            if (board[move] != BoardSquare::EMPTY) continue;
+            move_count++;
+            move_buffer[count++] = std::pair<float, int>(get_heuristic(move), move);
+        }
+
+        if (move_count == 0) return 0;
+
+        std::sort(move_buffer.begin(), move_buffer.begin() + count, [](std::pair<float, int> a, std::pair<float, int> b) { return a.first > b.first; });
+
+        int min_val = 9999;
+        int max_val = -9999;
+        long long min_val_hash;
+        long long max_val_hash;
+
+        for (int i = 0; i < count; i++) {
+            int move = move_buffer[i].second;
+
+            play_move(move);
+
+            long long key = table.hash(board, next_player);
+            int val;
+            
+            if (table.contains(key)) {
+                TranspositionTableEntry entry = table.get(key);
+                if (entry.type == EXACT && entry.depth >= depth - 1) {
+                    val = entry.score;
+                } else {
+                    val = minimax(alpha, beta, depth - 1, move);
+                }
+            } else {
+                val = minimax(alpha, beta, depth - 1, move);
             }
 
-            if (move_count == 0) return 0;
-
-            std::sort(move_buffer.begin(), move_buffer.begin() + count, [](std::pair<float, int> a, std::pair<float, int> b) { return a.first > b.first; });
-
-            int max_val = -9999;
-            for (int i = 0; i < count; i++) {
-                int move = move_buffer[i].second;
-
-                play_move(move);
-                int val = minimax(alpha, beta, depth - 1, move);
-                unplay_move(move);
-                
+            unplay_move(move);
+            
+            if (maximising) {
                 max_val = std::max(val, max_val);
                 alpha = std::max(val, alpha);
-
-                if (beta <= alpha) break;
-            }
-            return max_val;
-
-        } else {
-            std::array<std::pair<float, int>, N * N> move_buffer;
-            int count = 0;
-
-            int move_count = 0;
-
-            for (int move = 0; move < N * N; move++) {
-                if (board[move] != BoardSquare::EMPTY) continue;
-                move_count++;
-                move_buffer[count++] = std::pair<float, int>(get_heuristic(move), move);
-            }
-
-            if (move_count == 0) return 0;
-
-            std::sort(move_buffer.begin(), move_buffer.begin() + count, [](std::pair<float, int> a, std::pair<float, int> b) { return a.first > b.first; });
-
-            int min_val = 9999;
-            for (int i = 0; i < count; i++) {
-                int move = move_buffer[i].second;
-
-                play_move(move);
-                int val = minimax(alpha, beta, depth - 1, move);
-                unplay_move(move);
-                
+            } else {
                 min_val = std::min(val, min_val);
                 beta = std::min(val, beta);
-
-                if (beta <= alpha) break;
             }
-            if (move_count == 0) return 0;
+
+            if (beta <= alpha) break;
+        }
+
+        if (maximising) {
+            long long key = table.hash(board, next_player);
+            table.insert(key, TranspositionTableEntry{max_val, depth, NodeType::EXACT});
+            return max_val;
+        } else {
+            long long key = table.hash(board, next_player);
+            table.insert(key, TranspositionTableEntry{min_val, depth, NodeType::EXACT});
             return min_val;
         }
     }

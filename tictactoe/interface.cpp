@@ -45,7 +45,7 @@ void play() {
             // time how long it takes
             clock_t start = clock();
 
-            int move = game.get_best_move();
+            int move = game.get_best_move(10);
 
             clock_t end = clock();
             double elapsed = double(end - start) / CLOCKS_PER_SEC;
