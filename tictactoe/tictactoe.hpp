@@ -12,7 +12,7 @@
 #include <unordered_map>
 
 // NxN board, W win length
-template<int N>
+template<int N, int W>
 struct TicTacToe {
     BoardSquare next_player;
     int num_pieces = N;
@@ -29,7 +29,6 @@ struct TicTacToe {
     void restart() {
         for (int i = 0; i < N * N; i++) board[i] = BoardSquare::EMPTY;
         next_player = BoardSquare::X;
-        winner = BoardSquare::EMPTY;
     }
 
     BoardSquare at(int index) const {
@@ -88,60 +87,33 @@ struct TicTacToe {
 
     // returns BoardSquare::EMPTY if there is no winner
     // returns the winner if there is a winner
-    BoardSquare get_winner() const {
-        return winner;
-    }
-
-    // returns BoardSquare::EMPTY if there is no winner
-    // returns the winner if there is a winner
-    // most_recent_move makes it more efficient
     BoardSquare check_winner(int most_recent_move) {
-        if (get_winner() != BoardSquare::EMPTY) {
-            throw std::runtime_error("Winner should be empty when checking winner");
-        }
+        int x = most_recent_move % N;
+        int y = most_recent_move / N;
 
-        int move_x = most_recent_move % N;
-        int move_y = most_recent_move / N;
+        BoardSquare p = at(most_recent_move);
+        if (p == BoardSquare::EMPTY) return BoardSquare::EMPTY;
 
-        BoardSquare start_square = at(most_recent_move);
-        if (start_square == BoardSquare::EMPTY) return BoardSquare::EMPTY;
-
-        // check col
-        bool col_win = true;
-        for (int i = 0; i < N; i++) {
-            if (at(move_x, i) != start_square) col_win = false;
-        }
-        if (col_win) { return start_square; winner = start_square; }
-
-        // check row
-        bool row_win = true;
-        for (int i = 0; i < N; i++) {
-            if (at(i, move_y) != start_square) row_win = false;
-        }
-        if (row_win) { return start_square; winner = start_square; }
-
-        // check top left to bottom right
-        if (move_x == move_y) {
-            bool diag_tlbr_win = true;
-            for (int i = 0; i < N * N; i += N + 1) {
-                if (at(i) != start_square) {diag_tlbr_win = false; break;}
+        auto count_dir = [&](int dx, int dy) {
+            int c = 0;
+            int cx = x + dx, cy = y + dy;
+            while (cx >= 0 && cx < N && cy >= 0 && cy < N && at(cx, cy) == p) {
+                ++c;
+                cx += dx;
+                cy += dy;
             }
-            if (diag_tlbr_win) { return start_square; winner = start_square; }
-        }
+            return c;
+        };
 
-        // check top right to bottom left
-        if (move_x + move_y == N - 1) {
-            bool diag_trbl_win = true;
-            for (int i = N - 1; i < N * N - 1; i += N - 1) {
-                if (at(i) != start_square) {diag_trbl_win = false; break;}
-            }
-            if (diag_trbl_win) { return start_square; winner = start_square; }
-        }
+        // horizontal
+        if (1 + count_dir(-1, 0) + count_dir(1, 0) >= W) return p;
+        // vertical
+        if (1 + count_dir(0, -1) + count_dir(0, 1) >= W) return p;
+        // diagonal TL-BR
+        if (1 + count_dir(-1, -1) + count_dir(1, 1) >= W) return p;
+        // diagonal TR-BL
+        if (1 + count_dir(1, -1) + count_dir(-1, 1) >= W) return p;
 
         return BoardSquare::EMPTY;
     }
-    
-
-private:
-    BoardSquare winner = BoardSquare::EMPTY;
 };

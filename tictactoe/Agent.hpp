@@ -8,23 +8,23 @@
 #include <exception>
 #include <iostream>
 
-template<typename T, int N>
-concept Agent = requires(T agent, TicTacToe<N>& game) {
+template<typename T, int N, int W>
+concept Agent = requires(T agent, TicTacToe<N, W>& game) {
     { agent.get_eval(game) } -> std::convertible_to<float>;
     { agent.get_move(game) } -> std::convertible_to<int>;
 };
 
-template<int N, int B = 1048576>
+template<int N, int W, int B = 1048576>
 struct MinimaxAgent {
     int depth;
     MinimaxAgent() : depth(9999) {}
     MinimaxAgent(int depth) : depth(depth) {}
 
-    int get_eval(TicTacToe<N>& game) {
+    int get_eval(TicTacToe<N, W>& game) {
         return minimax(game, -9999, 9999, depth);
     }
 
-    int get_move(TicTacToe<N>& game, int seed = std::random_device{}()) {
+    int get_move(TicTacToe<N, W>& game, int seed = std::random_device{}()) {
         bool maximising = game.next_player == BoardSquare::X;
 
         int max_val = -9999;
@@ -67,7 +67,7 @@ struct MinimaxAgent {
 private:
     TranspositionTable<N, B> table;
 
-    float block_heuristic(TicTacToe<N>& game, int move_x, int move_y, int move) {
+    float block_heuristic(TicTacToe<N, W>& game, int move_x, int move_y, int move) {
         // check if it blocks a row (if everything other than us is the opponent)
         bool all_are_opponent = true;
         for (int i = 0; i < N; i++) {
@@ -107,7 +107,7 @@ private:
         return 0.0f;
     }
 
-    float win_heuristic(TicTacToe<N>& game, int move) {
+    float win_heuristic(TicTacToe<N, W>& game, int move) {
         game.play_move(move);
         BoardSquare winner = game.check_winner(move);
         game.unplay_move(move);
@@ -117,7 +117,7 @@ private:
         return -1.0f;
     }
 
-    float fork_heuristic(TicTacToe<N>& game, int move_x, int move_y, int move) {
+    float fork_heuristic(TicTacToe<N, W>& game, int move_x, int move_y, int move) {
         int num_threats = 0;
 
         // check row
@@ -186,7 +186,7 @@ private:
 
     // returns how good the move is under some heuristics (larger is better)
     // max return is 1
-    float get_heuristic(TicTacToe<N>& game, int move) {
+    float get_heuristic(TicTacToe<N, W>& game, int move) {
         // heuristics:
         // 1) block N in a rows - 1.0f
         // 2) create forks - 1.0f
@@ -211,7 +211,7 @@ private:
         return heuristic;
     }
 
-    float minimax(TicTacToe<N>& game, float alpha, float beta, int depth, int prev_move = -1) {
+    float minimax(TicTacToe<N, W>& game, float alpha, float beta, int depth, int prev_move = -1) {
         if (prev_move != -1) {
             BoardSquare winner = game.check_winner(prev_move);
             if (winner != BoardSquare::EMPTY) return winner == BoardSquare::X ? 1 : -1;
@@ -285,13 +285,13 @@ private:
     }
 };
 
-template<int N, int S = 0>
+template<int N, int W, int S = 0>
 struct RandomAgent {
-    float get_eval(TicTacToe<N>& game) {
+    float get_eval(TicTacToe<N, W>& game) {
         return 0.0;
     }
 
-    int get_move(TicTacToe<N>& game) {
+    int get_move(TicTacToe<N, W>& game) {
         std::vector<int> moves;
         for (int i = 0; i < N * N; i++) {
             if (game.at(i) != BoardSquare::EMPTY) continue;
@@ -301,5 +301,49 @@ struct RandomAgent {
         std::mt19937 mt(S);
         std::uniform_int_distribution<> distrib(0, moves.size() - 1);
         return moves[distrib(mt)];
+    }
+};
+
+template<int N, int W, int S = 0>
+struct HumanAgent {
+    float get_eval(TicTacToe<N, W>& game) {
+
+        float user_eval;
+        do {
+            std::cin.clear();
+            std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
+            std::cout << "If -1 is winning for O and 1 is winning for X, how would evaluate the game?" << std::endl;
+        } while (!(std::cin >> user_eval));
+
+        return user_eval;
+    }
+
+    int get_move(TicTacToe<N, W>& game) {
+        game.print_board();
+
+        int move_x;
+        int move_y;
+
+        while (true) {
+            std::cout << "Move x: ";
+            while (!(std::cin >> move_x)) {
+                std::cin.clear();
+                std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
+                std::cout << "Invalid number. Move x: ";
+            }
+
+            std::cout << "Move y: ";
+            while (!(std::cin >> move_y)) {
+                std::cin.clear();
+                std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
+                std::cout << "Invalid number. Move y: ";
+            }
+
+            if (move_x < 0 || move_x >= N || move_y < 0 || move_y >= N) std::cout << "Invalid move" << std::endl;
+            else if (game.at(move_x, move_y) != BoardSquare::EMPTY)  std::cout << "Invalid move" << std::endl;
+            else break;
+        }
+
+        return move_y * N + move_x;
     }
 };

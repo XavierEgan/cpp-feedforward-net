@@ -6,9 +6,9 @@
 #include <iostream>
 #include <iomanip>
 
-template <int N, Agent<N> AX, Agent<N> AO>
-void compare_agents(AX ax, AO ao, int num_tests = 100) {
-    TicTacToe<N> game;
+template <int N, int W, Agent<N, W> AX, Agent<N, W> AO>
+void benchmark_agents(AX ax, AO ao, int num_tests = 100) {
+    TicTacToe<N, W> game;
 
     int x_wins = 0;
     int o_wins = 0;
@@ -21,11 +21,15 @@ void compare_agents(AX ax, AO ao, int num_tests = 100) {
 
         for (int i = 0; i < N * N; i++) {
             int move;
+            std::cout << "a" << std::endl;
             if (game.next_player == BoardSquare::X) move = ax.get_move(game);
+            std::cout << "b" << std::endl;
             if (game.next_player == BoardSquare::O) move = ao.get_move(game);
+            std::cout << "c" << std::endl;
             game.play_move(move);
             winner = game.check_winner(move);
             if (winner != BoardSquare::EMPTY) break;
+
         }
 
         if (winner == BoardSquare::X) x_wins++;
