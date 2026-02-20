@@ -341,7 +341,7 @@ private:
         for (int i = 0; i < N; i++) {
             if (i == move_y) continue;
             if (at(move_x, i) == EMPTY) continue;
-            if (at(move_y, i) == next_player) { num_us++; continue; }
+            if (at(move_x, i) == next_player) { num_us++; continue; }
             num_us = -1;
             break;
         }
