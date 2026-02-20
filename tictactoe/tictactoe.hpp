@@ -272,7 +272,7 @@ struct TicTacToe {
     }
 
 private:
-    float get_block_heuristic(int move_x, int move_y, int move) {
+    float block_heuristic(int move_x, int move_y, int move) {
         // check if it blocks a row (if everything other than us is the opponent)
         bool all_are_opponent = true;
         for (int i = 0; i < N; i++) {
@@ -312,6 +312,16 @@ private:
         return 0.0f;
     }
 
+    float win_heuristic(int move) {
+        play_move(move);
+        BoardSquare winner = check_winner(move);
+        unplay_move(move);
+
+        if (winner == next_player) return 1.0f;
+        if (winner == EMPTY) return 0.0f;
+        return -1.0f;
+    }
+
     float fork_heuristic(int move_x, int move_y, int move) {
         int num_threats = 0;
 
@@ -319,8 +329,10 @@ private:
         int num_us = 1;
         for (int i = 0; i < N; i++) {
             if (i == move_x) continue;
-            if (at(i, move_y) == EMPTY || at(i, move_y) != next_player) continue;
-            num_us++;
+            if (at(i, move_y) == EMPTY) continue;
+            if (at(i, move_y) == next_player) { num_us++; continue; }
+            num_us = -1;
+            break;
         }
         if (num_us == N - 1) num_threats++;
 
@@ -328,8 +340,10 @@ private:
         num_us = 1;
         for (int i = 0; i < N; i++) {
             if (i == move_y) continue;
-            if (at(move_x, i) == EMPTY || at(move_x, i) != next_player) continue;
-            num_us++;
+            if (at(move_x, i) == EMPTY) continue;
+            if (at(move_y, i) == next_player) { num_us++; continue; }
+            num_us = -1;
+            break;
         }
         if (num_us == N - 1) num_threats++;
 
@@ -338,8 +352,10 @@ private:
             num_us = 1;
             for (int i = 0; i < N * N; i += N + 1) {
                 if (i == move) continue;
-                if (at(i) == EMPTY || at(i) != next_player) continue;
-                num_us++;
+                if (at(i) == EMPTY) continue;
+                if (at(i) == next_player) { num_us++; continue; }
+                num_us = -1;
+                break;
             }
             if (num_us == N - 1) num_threats++;
         }
@@ -349,8 +365,10 @@ private:
             num_us = 1;
             for (int i = N - 1; i < N * N - 1; i += N - 1) {
                 if (i == move) continue;
-                if (at(i) == EMPTY || at(i) != next_player) continue;
-                num_us++;
+                if (at(i) == EMPTY) continue;
+                if (at(i) == next_player) { num_us++; continue; }
+                num_us = -1;
+                break;
             }
             if (num_us == N - 1) num_threats++;
         }
@@ -358,6 +376,17 @@ private:
         if (num_threats > 1) return 1.0f;
         if (num_threats == 1) return 0.5f;
         return 0.0f;
+    }
+
+    float center_heuristic(int move_x, int move_y) {
+        float cx = (N - 1) * 0.5f;
+        float cy = (N - 1) * 0.5f;
+
+        float dist = std::abs(move_x - cx) + std::abs(move_y - cy);
+        float max_dist = cx + cy;
+
+        if (max_dist <= 0.0f) return 1.0f;
+        return 1.0f - (dist / max_dist);
     }
 
     // returns how good the move is under some heuristics (larger is better)
@@ -374,10 +403,14 @@ private:
         int move_x = move % N;
         int move_y = move / N;
 
-        heuristic = get_block_heuristic(move_x, move_y, move);
+        heuristic = block_heuristic(move_x, move_y, move);
         if (heuristic == 1.0f) return heuristic;
 
-        //heuristic = fork_heuristic(move_x, move_y, move);
+        heuristic = win_heuristic(move);
+        if (heuristic == 1.0f) return heuristic;
+        if (heuristic == -1.0f) return heuristic;
+
+        heuristic = fork_heuristic(move_x, move_y, move);
         if (heuristic == 1.0f) return heuristic;
 
         return heuristic;
