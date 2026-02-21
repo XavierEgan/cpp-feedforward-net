@@ -9,13 +9,14 @@
 #include <time.h>
 
 void play() {
-    const int board_size = 3;
-    const int win_length = 3;
+    const int board_size = 4;
+    const int win_length = 4;
 
-    MinimaxAgent<board_size, win_length> mini_shallow(6);
+    MinimaxAgent<board_size, win_length> mini_shallow;
     HumanAgent<board_size, win_length> human;
+    RandomAgent<board_size, win_length> random;
 
-    benchmark_agents<board_size, win_length>(mini_shallow, human);
+    benchmark_agents<board_size, win_length>(mini_shallow, random, 1);
 }
 
 int main() {

@@ -7,18 +7,24 @@
 #include <random>
 #include <exception>
 #include <iostream>
+#include <string>
+#include <chrono>
 
 template<typename T, int N, int W>
 concept Agent = requires(T agent, TicTacToe<N, W>& game) {
     { agent.get_eval(game) } -> std::convertible_to<float>;
     { agent.get_move(game) } -> std::convertible_to<int>;
+    { agent.get_name() } -> std::convertible_to<std::string>;
 };
 
 template<int N, int W, int B = 1048576>
 struct MinimaxAgent {
     int depth;
-    MinimaxAgent() : depth(9999) {}
-    MinimaxAgent(int depth) : depth(depth) {}
+    std::string name;
+
+    MinimaxAgent() : depth(9999), name("Unnamed MinimaxAgent") {}
+    MinimaxAgent(int depth) : depth(depth), name("Unnamed MinimaxAgent") {}
+    MinimaxAgent(int depth, std::string name) : depth(depth), name(name) {}
 
     int get_eval(TicTacToe<N, W>& game) {
         return minimax(game, -9999, 9999, depth);
@@ -61,9 +67,13 @@ struct MinimaxAgent {
 
         std::mt19937 gen(seed);
         std::uniform_int_distribution<> distrib(0, moves.size() - 1);
+
         return moves[distrib(gen)];
     }
 
+    std::string& get_name() {
+        return name;
+    }
 private:
     TranspositionTable<N, B> table;
 
@@ -118,59 +128,64 @@ private:
     }
 
     float fork_heuristic(TicTacToe<N, W>& game, int move_x, int move_y, int move) {
-        int num_threats = 0;
+        auto check_direction = [&](int dx, int dy) -> int {
+            // keep count of how many we actually have in a row
+            // note how many we could get in a row in +dx +dy with one added
+            // note how many we could get in a row in -dy -dy with one added
 
-        // check row
-        int num_us = 1;
-        for (int i = 0; i < N; i++) {
-            if (i == move_x) continue;
-            if (game.at(i, move_y) == BoardSquare::EMPTY) continue;
-            if (game.at(i, move_y) == game.next_player) { num_us++; continue; }
-            num_us = -1;
-            break;
-        }
-        if (num_us == N - 1) num_threats++;
+            int x = move_x + dx;
+            int y = move_y + dy;
 
-        // check col
-        num_us = 1;
-        for (int i = 0; i < N; i++) {
-            if (i == move_y) continue;
-            if (game.at(move_x, i) == BoardSquare::EMPTY) continue;
-            if (game.at(move_x, i) == game.next_player) { num_us++; continue; }
-            num_us = -1;
-            break;
-        }
-        if (num_us == N - 1) num_threats++;
+            int num_in_a_row = 1; // starts at 1 because of the move were checking
+            int possible_pos_in_a_row = 0;
+            int possible_neg_in_a_row = 0;
 
-        // check top left to bottom right
-        if (move_x == move_y) {
-            num_us = 1;
-            for (int i = 0; i < N * N; i += N + 1) {
-                if (i == move) continue;
-                if (game.at(i) == BoardSquare::EMPTY) continue;
-                if (game.at(i) == game.next_player) { num_us++; continue; }
-                num_us = -1;
-                break;
+            while (x >= 0 && x < N && y >= 0 && y < N) {
+                if (possible_pos_in_a_row == 0) {
+                    if (game.at(x, y) == game.next_player) num_in_a_row++;
+                    else if (game.at(x, y) == BoardSquare::EMPTY) possible_pos_in_a_row++;
+                } else {
+                    if (game.at(x, y) == game.next_player) possible_pos_in_a_row++;
+                    else if (game.at(x, y) == BoardSquare::EMPTY) possible_pos_in_a_row++;
+                }
+
+                x += dx;
+                y += dy;
             }
-            if (num_us == N - 1) num_threats++;
-        }
 
-        // check top right to bottom left
-        if (move_x + move_y == N - 1) {
-            num_us = 1;
-            for (int i = N - 1; i < N * N - 1; i += N - 1) {
-                if (i == move) continue;
-                if (game.at(i) == BoardSquare::EMPTY) continue;
-                if (game.at(i) == game.next_player) { num_us++; continue; }
-                num_us = -1;
-                break;
+            x = move_x - dx;
+            y = move_y - dy;
+
+            while (x >= 0 && x < N && y >= 0 && y < N) {
+                if (possible_neg_in_a_row == 0) {
+                    if (game.at(x, y) == game.next_player) num_in_a_row++;
+                    else if (game.at(x, y) == BoardSquare::EMPTY) possible_neg_in_a_row++;
+                    else break;
+                } else {
+                    if (game.at(x, y) == game.next_player) possible_neg_in_a_row++;
+                    else if (game.at(x, y) == BoardSquare::EMPTY) possible_neg_in_a_row++;
+                    else break;
+                }
+
+                x -= dx;
+                y -= dy;
             }
-            if (num_us == N - 1) num_threats++;
-        }
 
-        if (num_threats > 1) return 1.0f;
-        if (num_threats == 1) return 0.5f;
-        return 0.0f;
+            if (num_in_a_row + possible_pos_in_a_row >= W && num_in_a_row + possible_neg_in_a_row >= W) return 2;
+            else if (num_in_a_row + possible_pos_in_a_row >= W) return 1;
+            else if (num_in_a_row + possible_neg_in_a_row >= W) return 1;
+            else return 0;
+        };
+
+        int fork_count = 0;
+        fork_count += check_direction(1, 0);
+        fork_count += check_direction(0, 1);
+        fork_count += check_direction(1, 1);
+        fork_count += check_direction(-1, 1);
+
+        if (fork_count >= 2) return 0.9f;
+        if (fork_count == 1) return 0.5f;
+        else return 0.0f;
     }
 
     float center_heuristic(int move_x, int move_y) {
@@ -189,7 +204,7 @@ private:
     float get_heuristic(TicTacToe<N, W>& game, int move) {
         // heuristics:
         // 1) block N in a rows - 1.0f
-        // 2) create forks - 1.0f
+        // 2) create forks - 0.9f
         // 3) create threats - 0.5f
         // 3) play towards the middle - 0.2f
 
@@ -198,15 +213,11 @@ private:
         int move_x = move % N;
         int move_y = move / N;
 
-        heuristic = block_heuristic(game, move_x, move_y, move);
-        if (heuristic == 1.0f) return heuristic;
+        heuristic += block_heuristic(game, move_x, move_y, move);
 
-        heuristic = win_heuristic(game, move);
-        if (heuristic == 1.0f) return heuristic;
-        if (heuristic == -1.0f) return heuristic;
+        heuristic += win_heuristic(game, move);
 
-        heuristic = fork_heuristic(game, move_x, move_y, move);
-        if (heuristic == 1.0f) return heuristic;
+        heuristic += fork_heuristic(game, move_x, move_y, move);
 
         return heuristic;
     }
@@ -287,6 +298,10 @@ private:
 
 template<int N, int W, int S = 0>
 struct RandomAgent {
+    std::string name;
+    RandomAgent() : name("Unnamed RandomAgent") {}
+    RandomAgent(std::string name) : name(name) {}
+
     float get_eval(TicTacToe<N, W>& game) {
         return 0.0;
     }
@@ -302,12 +317,20 @@ struct RandomAgent {
         std::uniform_int_distribution<> distrib(0, moves.size() - 1);
         return moves[distrib(mt)];
     }
+
+    std::string& get_name() {
+        return name;
+    }
 };
 
 template<int N, int W, int S = 0>
 struct HumanAgent {
-    float get_eval(TicTacToe<N, W>& game) {
+    std::string name;
 
+    HumanAgent() : name("Unnamed HuamnAgent") {}
+    HumanAgent(std::string name) : name(name) {}
+
+    float get_eval(TicTacToe<N, W>& game) {
         float user_eval;
         do {
             std::cin.clear();
@@ -345,5 +368,9 @@ struct HumanAgent {
         }
 
         return move_y * N + move_x;
+    }
+
+    std::string get_name() {
+        return name;
     }
 };
