@@ -43,7 +43,7 @@ struct MinimaxAgent {
             if (game.at(move) != BoardSquare::EMPTY) continue;
             
             game.play_move(move);
-            float move_val = minimax(game, -9999, 9999, depth);
+            float move_val = minimax(game, -9999, 9999, depth, move);
             game.unplay_move(move);
 
             if (maximising && move_val > max_val) {
@@ -276,10 +276,10 @@ private:
             
             if (maximising) {
                 max_val = std::max(val, max_val);
-                alpha = std::max(val, alpha);
+                alpha = std::max(alpha, val);
             } else {
                 min_val = std::min(val, min_val);
-                beta = std::min(val, beta);
+                beta = std::min(beta, val);
             }
 
             if (beta <= alpha) break;
@@ -292,6 +292,7 @@ private:
         else if (best >= beta_orig) type = NodeType::LOWER;
         
         table.insert(key, TranspositionTableEntry{best, depth, type});
+
         return best;
     }
 };
@@ -373,4 +374,13 @@ struct HumanAgent {
     std::string get_name() {
         return name;
     }
+};
+
+template<int N, int W, int S = 0>
+struct FFNNAgent {
+    std::string name;
+    
+
+    FFNNAgent() : name("Unnamed HuamnAgent") {}
+    FFNNAgent(std::string name) : name(name) {}
 };

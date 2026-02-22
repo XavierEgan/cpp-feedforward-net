@@ -44,15 +44,19 @@ struct TicTacToe {
         return board[y * N + x];
     }
 
-    Eigen::MatrixXf get_board_state(BoardSquare player) {
+    /*
+    return a matrix representation of the board with
+    1 = X
+    -1 = O
+    0 = blank
+    */
+    Eigen::MatrixXf get_board_state() {
         Eigen::MatrixXf state(N * N, 1);
         for (int i = 0; i < N * N; i++) {
             if (board[i] == BoardSquare::X) state(i, 0) = 1.0f;
             else if (board[i] == BoardSquare::O) state(i, 0) = -1.0f;
             else state(i, 0) = 0.0f;
         }
-
-        if (player == BoardSquare::O) state = -state;
 
         return state;
     }
