@@ -12,12 +12,12 @@ void play() {
     const int board_size = 5;
     const int win_length = 4;
 
-    MinimaxAgent<board_size, win_length> mini_deep(6, "deep MiniMaxAgent");
-    MinimaxAgent<board_size, win_length> mini_shallow(5, "shallow MiniMaxAgent");
+    OldMinimaxAgent<board_size, win_length> old_mini(5, "old MiniMaxAgent");
+    MinimaxAgent<board_size, win_length> new_mini(3, "new MiniMaxAgent");
     HumanAgent<board_size, win_length> human;
     RandomAgent<board_size, win_length> random;
 
-    benchmark_agents<board_size, win_length>(mini_deep, mini_shallow);
+    benchmark_agents<board_size, win_length>(old_mini, new_mini);
 }
 
 int main() {
