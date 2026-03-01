@@ -298,19 +298,6 @@ private:
             }
         }
 
-        // central control bonus
-        for (int move = 0; move < N * N; move++) {
-            BoardSquare sq = game.at(move);
-            if (sq == BoardSquare::EMPTY) continue;
-
-            int move_x = move % N;
-            int move_y = move / N;
-            float bonus = center_heuristic(move_x, move_y) * central_piece;
-
-            if (sq == BoardSquare::X) eval += x_const * bonus;
-            else eval += o_const * bonus;
-        }
-
         return std::clamp(eval, -1.0f, 1.0f);
     }
 
