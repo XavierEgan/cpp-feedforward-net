@@ -67,12 +67,19 @@ struct LRSchedulerDecayOnPlateau {
 
     static LRSchedulerDecayOnPlateau from_num_generation(double lr_initial, double lr_final, int min_generations, int patience) {
         if (min_generations < 1) {
-            throw std::invalid_argument("max_generations cant be 0");
+            throw std::invalid_argument("min_generations cant be 0");
         }
         lr_initial = std::max(lr_initial, lr_eps);
 
-        min_generations *= patience; // 
-        double step_size = pow(static_cast<double>(lr_final) / static_cast<double>(lr_initial), 1.0 / static_cast<double>(min_generations));
+        min_generations *= patience;
+
+        /*
+        L_f = L_i * (S_s)^(G_m / P)
+        therfore
+        S_s = (L_f / L_i) ^ (P / G_m)
+        */
+
+        double step_size = pow(lr_final / lr_initial, static_cast<double>(patience) / static_cast<double>(min_generations));
 
         return LRSchedulerDecayOnPlateau(step_size, lr_initial, lr_final, patience);
     }
