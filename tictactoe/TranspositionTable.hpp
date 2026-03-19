@@ -3,6 +3,8 @@
 #include <vector>
 #include <random>
 
+#include "./enums.hpp"
+
 struct TranspositionTableEntry {
     float score;
     int depth;

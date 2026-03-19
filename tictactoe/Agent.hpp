@@ -1,6 +1,8 @@
 #pragma once
 #include "./TicTacToe.hpp"
 #include "./enums.hpp"
+#include "./TranspositionTable.hpp"
+#include "../FFNN.hpp"
 
 #include <concepts>
 #include <array>
@@ -17,7 +19,7 @@ concept Agent = requires(T agent, TicTacToe<N, W>& game) {
     { agent.get_name() } -> std::convertible_to<std::string>;
 };
 
-template<int N, int W, int B = 1048576>
+template<int N, int W, int B = 1048576 * 16>
 struct MinimaxAgent {
     int depth;
     std::string name;
@@ -304,28 +306,11 @@ private:
     float minimax(TicTacToe<N, W>& game, float alpha, float beta, int depth, int prev_move = -1) {
         if (depth <= 0) return get_static_eval(game, prev_move);
 
-        const float alpha_orig = alpha;
-        const float beta_orig = beta;
-
-        bool maximising = game.next_player == BoardSquare::X;
-        
-        std::array<std::pair<float, int>, N * N> move_buffer;
-        int count = 0;
-
-        int move_count = 0;
-
-        for (int move = 0; move < N * N; move++) {
-            if (game.at(move) != BoardSquare::EMPTY) continue;
-            move_count++;
-            move_buffer[count++] = std::pair<float, int>(get_heuristic(game, move), move);
+        if (prev_move != -1) {
+            BoardSquare winner = game.check_winner(prev_move);
+            if (winner == BoardSquare::X) return 1.0f;
+            if (winner == BoardSquare::O) return -1.0f;
         }
-
-        if (move_count == 0) return 0;
-
-        std::sort(move_buffer.begin(), move_buffer.begin() + count, [](std::pair<float, int> a, std::pair<float, int> b) { return a.first > b.first; });
-
-        float min_val = 9999;
-        float max_val = -9999;
 
         long long key = table.hash(game.board, game.next_player);
         if (table.contains(key)) {
@@ -338,6 +323,26 @@ private:
                 if (alpha >= beta) return entry.score;
             }
         }
+
+        const float alpha_orig = alpha;
+        const float beta_orig = beta;
+
+        bool maximising = game.next_player == BoardSquare::X;
+        
+        std::array<std::pair<float, int>, N * N> move_buffer;
+        int count = 0;
+
+        for (int move = 0; move < N * N; move++) {
+            if (game.at(move) != BoardSquare::EMPTY) continue;
+            move_buffer[count++] = std::pair<float, int>(get_heuristic(game, move), move);
+        }
+
+        if (count == 0) return 0;
+
+        std::sort(move_buffer.begin(), move_buffer.begin() + count, [](std::pair<float, int> a, std::pair<float, int> b) { return a.first > b.first; });
+
+        float min_val = 9999;
+        float max_val = -9999;
 
         for (int i = 0; i < count; i++) {
             int move = move_buffer[i].second;

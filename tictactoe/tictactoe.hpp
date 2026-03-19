@@ -1,6 +1,5 @@
 #pragma once
 #include "./enums.hpp"
-#include "./TranspositionTable.hpp"
 
 #include "../Eigen/Dense"
 #include <iostream>
