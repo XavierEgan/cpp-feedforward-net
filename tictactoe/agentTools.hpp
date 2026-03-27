@@ -141,8 +141,8 @@ void benchmark_agents(A1 a1, A2 a2, int num_tests = 100) {
 
 template <int N, int W, Agent<N, W> AX, Agent<N, W> AO>
 /*
-input gets board states appended to it
-target gets board state evaluation from ax appended to it
+inputs gets board states appended to it
+targets gets board state evaluation from ax appended to it
 */
 void get_training_data(AX ax, AO ao, std::vector<Eigen::MatrixXf>& inputs, std::vector<Eigen::MatrixXf>& targets, int num_games = 1000) {
     TicTacToe<N, W> game;

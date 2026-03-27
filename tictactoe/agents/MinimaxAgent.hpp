@@ -22,10 +22,12 @@ struct MinimaxAgent {
     MinimaxAgent(int depth, std::string name) : depth(depth), name(name) {}
 
     float get_eval(TicTacToe<N, W>& game) {
+        table.map.clear();
         return minimax(game, -9999, 9999, depth);
     }
 
     int get_move(TicTacToe<N, W>& game, int seed = std::random_device{}()) {
+        table.map.clear();
         bool maximising = game.next_player == BoardSquare::X;
 
         float max_val = -9999.0f;
