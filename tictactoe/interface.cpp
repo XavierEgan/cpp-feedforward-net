@@ -17,7 +17,7 @@ void play() {
     HumanAgent<board_size, win_length> human;
     RandomAgent<board_size, win_length> random;
 
-    benchmark_agents<board_size, win_length>(human, new_mini, 1);
+    benchmark_agents<board_size, win_length>(old_mini, new_mini, 50);
 }
 
 int main() {

@@ -133,9 +133,9 @@ void benchmark_agents(A1 a1, A2 a2, int num_tests = 100) {
 
     std::cout << std::fixed << std::setprecision(3);
     std::cout << "\nTiming summary (ms)\n";
-    std::cout << std::left << std::setw(18) << "Agent"       << std::right << std::setw(16) << "First move"    << std::setw(16) << "Any move"    << std::setw(20) << "Longest Move avg" << "\n";
-    std::cout << std::left << std::setw(18) << a1.get_name() << std::right << std::setw(16) << a1_avg_first_ms << std::setw(16) << a1_avg_any_ms << std::setw(10) << a1_longest_av_move.first << std::setw(10) << a1_longest_av_move.second << "\n";
-    std::cout << std::left << std::setw(18) << a2.get_name() << std::right << std::setw(16) << a2_avg_first_ms << std::setw(16) << a2_avg_any_ms << std::setw(10) << a2_longest_av_move.first << std::setw(10) << a2_longest_av_move.second <<  "\n";
+    std::cout << std::left << std::setw(18) << "Agent"       << std::right << std::setw(16) << "First move av"    << std::setw(16) << "Any move av" << "\n";
+    std::cout << std::setprecision(2) << std::left << std::setw(18) << a1.get_name() << std::right << std::setw(16) << a1_avg_first_ms << std::setw(16) << a1_avg_any_ms << "\n";
+    std::cout << std::left << std::setw(18) << a2.get_name() << std::right << std::setw(16) << a2_avg_first_ms << std::setw(16) << a2_avg_any_ms << "\n";
 }
 
 
