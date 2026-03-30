@@ -150,6 +150,8 @@ void get_training_data(AX ax, AO ao, std::vector<Eigen::MatrixXf>& inputs, std::
     for (int g = 0; g < num_games; g++) {
         game.restart();
 
+        std::cout << "game " << g + 1 << " played" << std::endl;
+
         for (int i = 0; i < N * N; i++) {
             int move;
             if (game.next_player == BoardSquare::X) move = ax.get_move(game);

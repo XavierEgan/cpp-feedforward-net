@@ -14,16 +14,16 @@
 
 template<int N, int W, int B = 1048576 * 16>
 struct MinimaxAgent {
-    int depth;
+    float max_time_ms;
     std::string name;
 
-    MinimaxAgent() : depth(9999), name("Unnamed MinimaxAgent") {}
-    MinimaxAgent(int depth) : depth(depth), name("Unnamed MinimaxAgent") {}
-    MinimaxAgent(int depth, std::string name) : depth(depth), name(name) {}
+    MinimaxAgent() : max_time_ms(1.0f), name("Unnamed MinimaxAgent") {}
+    MinimaxAgent(float max_time_ms) : max_time_ms(max_time_ms), name("Unnamed MinimaxAgent") {}
+    MinimaxAgent(float max_time_ms, std::string name) : max_time_ms(max_time_ms), name(name) {}
 
     float get_eval(TicTacToe<N, W>& game) {
         table.map.clear();
-        return minimax(game, -9999, 9999, depth);
+        return minimax(game, -9999, 9999, max_time_ms);
     }
 
     int get_move(TicTacToe<N, W>& game, int seed = std::random_device{}()) {
@@ -40,7 +40,7 @@ struct MinimaxAgent {
             if (game.at(move) != BoardSquare::EMPTY) continue;
             
             game.play_move(move);
-            float move_val = minimax(game, -9999, 9999, depth, move);
+            float move_val = minimax(game, -9999, 9999, 0, move);
             game.unplay_move(move);
 
             if (maximising && move_val > max_val) {
@@ -298,8 +298,9 @@ private:
         return std::clamp(eval, -1.0f, 1.0f);
     }
 
-    float minimax(TicTacToe<N, W>& game, float alpha, float beta, int depth, int prev_move = -1) {
-        if (depth <= 0) return get_static_eval(game, prev_move);
+    float minimax(TicTacToe<N, W>& game, float alpha, float beta, int depth, std::time_t, int prev_move = -1) {
+        
+        if () return get_static_eval(game, prev_move);
 
         if (prev_move != -1) {
             BoardSquare winner = game.check_winner(prev_move);
@@ -310,7 +311,7 @@ private:
         long long key = table.hash(game.board, game.next_player);
         if (table.contains(key)) {
             TranspositionTableEntry entry = table.get(key);
-            if (entry.depth >= depth) {
+            if (entry.depth <= depth) {
                 if (entry.type == NodeType::EXACT) return entry.score;
                 if (entry.type == NodeType::LOWER) alpha = std::max(alpha, entry.score);
                 else beta = std::min(beta, entry.score);
@@ -344,7 +345,7 @@ private:
 
             game.play_move(move);
             
-            float val = minimax(game, alpha, beta, depth - 1, move);
+            float val = minimax(game, alpha, beta, depth + 1, move);
 
             game.unplay_move(move);
             
