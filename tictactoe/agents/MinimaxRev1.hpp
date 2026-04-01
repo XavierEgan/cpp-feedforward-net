@@ -12,26 +12,24 @@
 #include <string>
 #include <chrono>
 
-template<int N, int W, int B = 1048576 * 16>
-struct MinimaxAgent {
-    float max_time_ms;
+template<int N, int W, int B = 1048576>
+struct MinimaxRev1Agent {
+    int depth;
     std::string name;
 
-    MinimaxAgent() : max_time_ms(1.0f), name("Unnamed MinimaxAgent") {}
-    MinimaxAgent(float max_time_ms) : max_time_ms(max_time_ms), name("Unnamed MinimaxAgent") {}
-    MinimaxAgent(float max_time_ms, std::string name) : max_time_ms(max_time_ms), name(name) {}
+    MinimaxRev1Agent() : depth(9999), name("Unnamed MinimaxAgent-rev1") {}
+    MinimaxRev1Agent(int depth) : depth(depth), name("Unnamed MinimaxAgent-rev1") {}
+    MinimaxRev1Agent(int depth, std::string name) : depth(depth), name(name) {}
 
-    float get_eval(TicTacToe<N, W>& game) {
-        table.map.clear();
-        return minimax(game, -9999, 9999, max_time_ms);
+    int get_eval(TicTacToe<N, W>& game) {
+        return minimax(game, -9999, 9999, depth);
     }
 
     int get_move(TicTacToe<N, W>& game, int seed = std::random_device{}()) {
-        table.map.clear();
         bool maximising = game.next_player == BoardSquare::X;
 
-        float max_val = -9999.0f;
-        float min_val = 9999.0f;
+        int max_val = -9999;
+        int min_val = 9999;
 
         std::vector<int> max_moves;
         std::vector<int> min_moves;
@@ -40,7 +38,7 @@ struct MinimaxAgent {
             if (game.at(move) != BoardSquare::EMPTY) continue;
             
             game.play_move(move);
-            float move_val = minimax(game, -9999, 9999, 0, move);
+            float move_val = minimax(game, -9999, 9999, depth, move);
             game.unplay_move(move);
 
             if (maximising && move_val > max_val) {
@@ -59,7 +57,6 @@ struct MinimaxAgent {
         std::vector<int>& moves = maximising ? max_moves : min_moves;
 
         if (moves.size() == 0) {
-            game.print_board();
             throw std::invalid_argument("Board cannot be full");
         }
 
@@ -197,7 +194,7 @@ private:
         return 1.0f - (dist / max_dist);
     }
 
-    // returns how good the move is under some heuristics(larger is better)
+    // returns how good the move is under some heuristics (larger is better)
     // max return is 1
     float get_heuristic(TicTacToe<N, W>& game, int move) {
         // heuristics:
@@ -220,105 +217,13 @@ private:
         return heuristic;
     }
 
-    float get_static_eval(TicTacToe<N, W>& game, int prev_move = -1) {
-        // static eval of the board, max = +-1.0
-        // x = +ve
-        // o = -ve
-        constexpr float o_const = -1.0f;
-        constexpr float x_const = 1.0f;
-        constexpr float win = 1.0f;
-        constexpr float threat = 0.1f; // if there are 10 threats then lets be honest its probably a win for you
-        constexpr float central_piece = 0.01f; // a single threat is vastly more valuable than a central piece
-
-        float eval = 0.0f;
-
+    float minimax(TicTacToe<N, W>& game, float alpha, float beta, int depth, int prev_move = -1) {
         if (prev_move != -1) {
             BoardSquare winner = game.check_winner(prev_move);
-            if (winner == BoardSquare::O) return o_const * win;
-            else if (winner == BoardSquare::X) return win;
+            if (winner != BoardSquare::EMPTY) return winner == BoardSquare::X ? 1 : -1;
         }
 
-        auto eval_window = [&](int x, int y, int dx, int dy) -> float {
-            int num_x = 0;
-            int num_o = 0;
-            int num_empty = 0;
-
-            for (int i = 0; i < W; i++) {
-                BoardSquare sq = game.at(x + i * dx, y + i * dy);
-                if (sq == BoardSquare::X) num_x++;
-                else if (sq == BoardSquare::O) num_o++;
-                else num_empty++;
-            }
-
-            if (num_x > 0 && num_o > 0) return 0.0f;
-            if (num_x == 0 && num_o == 0) return 0.0f;
-
-            if (num_o == 0) {
-                if (num_x == W - 1 && num_empty == 1) return threat;
-                return threat * (static_cast<float>(num_x) / static_cast<float>(W));
-            }
-
-            if (num_x == 0) {
-                if (num_o == W - 1 && num_empty == 1) return -threat;
-                return -threat * (static_cast<float>(num_o) / static_cast<float>(W));
-            }
-
-            return 0.0f;
-        };
-
-        // sliding W-length windows
-        // rows
-        for (int y = 0; y < N; y++) {
-            for (int x = 0; x <= N - W; x++) {
-                eval += eval_window(x, y, 1, 0);
-            }
-        }
-
-        // cols
-        for (int x = 0; x < N; x++) {
-            for (int y = 0; y <= N - W; y++) {
-                eval += eval_window(x, y, 0, 1);
-            }
-        }
-
-        // diagonal TL -> BR
-        for (int y = 0; y <= N - W; y++) {
-            for (int x = 0; x <= N - W; x++) {
-                eval += eval_window(x, y, 1, 1);
-            }
-        }
-
-        // diagonal TR -> BL
-        for (int y = 0; y <= N - W; y++) {
-            for (int x = W - 1; x < N; x++) {
-                eval += eval_window(x, y, -1, 1);
-            }
-        }
-
-        return std::clamp(eval, -1.0f, 1.0f);
-    }
-
-    float minimax(TicTacToe<N, W>& game, float alpha, float beta, int depth, std::time_t, int prev_move = -1) {
-        
-        if () return get_static_eval(game, prev_move);
-
-        if (prev_move != -1) {
-            BoardSquare winner = game.check_winner(prev_move);
-            if (winner == BoardSquare::X) return 1.0f;
-            if (winner == BoardSquare::O) return -1.0f;
-        }
-
-        long long key = table.hash(game.board, game.next_player);
-        if (table.contains(key)) {
-            TranspositionTableEntry entry = table.get(key);
-            if (entry.depth <= depth) {
-                if (entry.type == NodeType::EXACT) return entry.score;
-                if (entry.type == NodeType::LOWER) alpha = std::max(alpha, entry.score);
-                else beta = std::min(beta, entry.score);
-                
-                if (alpha >= beta) return entry.score;
-            }
-        }
+        if (depth <= 0) return 0;
 
         const float alpha_orig = alpha;
         const float beta_orig = beta;
@@ -328,24 +233,39 @@ private:
         std::array<std::pair<float, int>, N * N> move_buffer;
         int count = 0;
 
+        int move_count = 0;
+
         for (int move = 0; move < N * N; move++) {
             if (game.at(move) != BoardSquare::EMPTY) continue;
+            move_count++;
             move_buffer[count++] = std::pair<float, int>(get_heuristic(game, move), move);
         }
 
-        if (count == 0) return 0;
+        if (move_count == 0) return 0;
 
         std::sort(move_buffer.begin(), move_buffer.begin() + count, [](std::pair<float, int> a, std::pair<float, int> b) { return a.first > b.first; });
 
         float min_val = 9999;
         float max_val = -9999;
 
+        long long key = table.hash(game.board, game.next_player);
+        if (table.contains(key)) {
+            TranspositionTableEntry entry = table.get(key);
+            if (entry.depth >= depth) {
+                if (entry.type == NodeType::EXACT) return entry.score;
+                if (entry.type == NodeType::LOWER) alpha = std::max(alpha, entry.score);
+                else beta = std::min(beta, entry.score);
+                
+                if (alpha >= beta) return entry.score;
+            }
+        }
+
         for (int i = 0; i < count; i++) {
             int move = move_buffer[i].second;
 
             game.play_move(move);
             
-            float val = minimax(game, alpha, beta, depth + 1, move);
+            float val = minimax(game, alpha, beta, depth - 1, move);
 
             game.unplay_move(move);
             
