@@ -19,8 +19,8 @@ concept Agent = requires(T agent, TicTacToe<N, W>& game) {
     { agent.get_name() } -> std::convertible_to<std::string>;
 };
 
-#include "./agents/FFNNAgent.hpp"
-#include "./agents/HumanAgent.hpp"
-#include "./agents/MinimaxAgent.hpp"
-#include "./agents/OldMinimaxAgent.hpp"
-#include "./agents/RandomAgent.hpp"
+#include "./agents/FFNN.hpp"
+#include "./agents/Human.hpp"
+#include "./agents/MinimaxRev1.hpp"
+#include "./agents/MinimaxRev2.hpp"
+#include "./agents/Random.hpp"
