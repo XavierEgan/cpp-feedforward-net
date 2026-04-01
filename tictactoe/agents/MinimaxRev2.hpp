@@ -14,16 +14,16 @@
 
 template<int N, int W, int B = 1048576 * 16>
 struct MinimaxRev2Agent {
-    float max_time_ms;
+    int depth;
     std::string name;
 
-    MinimaxRev2Agent() : max_time_ms(1.0f), name("Unnamed MinimaxRev2Agent") {}
-    MinimaxRev2Agent(float max_time_ms) : max_time_ms(max_time_ms), name("Unnamed MinimaxRev2Agent") {}
-    MinimaxRev2Agent(float max_time_ms, std::string name) : max_time_ms(max_time_ms), name(name) {}
+    MinimaxRev2Agent() : depth(1.0f), name("Unnamed MinimaxRev2Agent") {}
+    MinimaxRev2Agent(float depth) : depth(depth), name("Unnamed MinimaxRev2Agent") {}
+    MinimaxRev2Agent(float depth, std::string name) : depth(depth), name(name) {}
 
     float get_eval(TicTacToe<N, W>& game) {
         table.map.clear();
-        return minimax(game, -9999, 9999, max_time_ms);
+        return minimax(game, -9999, 9999, depth);
     }
 
     int get_move(TicTacToe<N, W>& game, int seed = std::random_device{}()) {
@@ -298,9 +298,8 @@ private:
         return std::clamp(eval, -1.0f, 1.0f);
     }
 
-    float minimax(TicTacToe<N, W>& game, float alpha, float beta, int depth, std::time_t, int prev_move = -1) {
-        
-        if () return get_static_eval(game, prev_move);
+    float minimax(TicTacToe<N, W>& game, float alpha, float beta, int depth, int prev_move = -1) {
+        if (depth <= 0) return get_static_eval(game, prev_move);
 
         if (prev_move != -1) {
             BoardSquare winner = game.check_winner(prev_move);
@@ -311,7 +310,7 @@ private:
         long long key = table.hash(game.board, game.next_player);
         if (table.contains(key)) {
             TranspositionTableEntry entry = table.get(key);
-            if (entry.depth <= depth) {
+            if (entry.depth >= depth) {
                 if (entry.type == NodeType::EXACT) return entry.score;
                 if (entry.type == NodeType::LOWER) alpha = std::max(alpha, entry.score);
                 else beta = std::min(beta, entry.score);

@@ -19,7 +19,7 @@ void train_base_model() {
     const int win_length = 4;
 
     // gather data for pretraining
-    MinimaxAgent<board_size, win_length> minimax_agent(3);
+    MinimaxRev2Agent<board_size, win_length> minimax_agent(3);
 
     std::vector<Eigen::MatrixXf> inputs;
     std::vector<Eigen::MatrixXf> targets;
