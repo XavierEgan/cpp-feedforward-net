@@ -13,20 +13,54 @@
 #include <chrono>
 
 template<int N, int W, int B = 1048576 * 16>
-struct MinimaxRev2Agent {
-    int depth;
+struct MinimaxRev3Agent {
+    std::chrono::duration<double, std::milli> max_move_time;
     std::string name;
 
-    MinimaxRev2Agent() : depth(1.0f), name("Unnamed MinimaxRev2Agent") {}
-    MinimaxRev2Agent(int depth) : depth(depth), name("Unnamed MinimaxRev2Agent") {}
-    MinimaxRev2Agent(int depth, std::string name) : depth(depth), name(name) {}
+    MinimaxRev3Agent() : max_move_time(1), name("Unnamed MinimaxRev3Agent") {}
+    MinimaxRev3Agent(double max_move_time) : max_move_time(max_move_time), name("Unnamed MinimaxRev3Agent") {}
+    MinimaxRev3Agent(double max_move_time, std::string name) : max_move_time(max_move_time), name(name) {}
 
     float get_eval(TicTacToe<N, W>& game) {
+        // TODO: fix ts
         table.map.clear();
-        return minimax(game, -9999, 9999, depth);
+        return minimax(game, -9999, 9999, 1);
+    }
+
+    std::string& get_name() {
+        return name;
     }
 
     int get_move(TicTacToe<N, W>& game, int seed = std::random_device{}()) {
+        // try get move at depth 1, then depth 2 etc and use the last move that didnt time out
+        std::chrono::steady_clock::time_point deadline = std::chrono::steady_clock::now() + std::chrono::duration_cast<std::chrono::steady_clock::duration>(max_move_time);
+
+        int prev_move = -1;
+        int cur_move;
+        
+        for (int depth = 0; true; depth++) {
+            cur_move = get_move_at_depth(game, depth, deadline, seed);
+
+            if (std::chrono::steady_clock::now() >= deadline) {
+                if (prev_move == -1) {
+                    std::cout << "Agent reached deadline before finishing depth zero" << std::endl;
+
+                    // get the first move we can
+                    for (int move = 0; move < N * N; move++) {
+                        if (game.at(move) != BoardSquare::EMPTY) continue;
+                        return move;
+                    }
+                }
+                return prev_move;
+            }
+
+            prev_move = cur_move;
+        }
+    }
+private:
+    TranspositionTable<N, B> table;
+
+    int get_move_at_depth(TicTacToe<N, W>& game, int depth, std::chrono::steady_clock::time_point deadline, int seed = std::random_device{}()) {
         table.map.clear();
         bool maximising = game.next_player == BoardSquare::X;
 
@@ -37,10 +71,13 @@ struct MinimaxRev2Agent {
         std::vector<int> min_moves;
 
         for (int move = 0; move < N * N; move++) {
+            if (std::chrono::steady_clock::now() >= deadline)
+                return 0;
+
             if (game.at(move) != BoardSquare::EMPTY) continue;
             
             game.play_move(move);
-            float move_val = minimax(game, -9999, 9999, depth, move);
+            float move_val = minimax(game, -9999, 9999, depth, deadline, move);
             game.unplay_move(move);
 
             if (maximising && move_val > max_val) {
@@ -68,12 +105,6 @@ struct MinimaxRev2Agent {
 
         return moves[distrib(gen)];
     }
-
-    std::string& get_name() {
-        return name;
-    }
-private:
-    TranspositionTable<N, B> table;
 
     float block_heuristic(TicTacToe<N, W>& game, int move_x, int move_y, int move) {
         // check if it blocks a row (if everything other than us is the opponent)
@@ -298,7 +329,9 @@ private:
         return std::clamp(eval, -1.0f, 1.0f);
     }
 
-    float minimax(TicTacToe<N, W>& game, float alpha, float beta, int depth, int prev_move = -1) {
+    float minimax(TicTacToe<N, W>& game, float alpha, float beta, int depth, std::chrono::steady_clock::time_point deadline, int prev_move = -1) {
+        // since were not using it anyway if we hit deadline
+        if (std::chrono::steady_clock::now() >= deadline) return 0;
         if (depth <= 0) return get_static_eval(game, prev_move);
 
         if (prev_move != -1) {
@@ -340,11 +373,14 @@ private:
         float max_val = -9999;
 
         for (int i = 0; i < count; i++) {
+            if (std::chrono::steady_clock::now() >= deadline)
+                return 0;
+
             int move = move_buffer[i].second;
 
             game.play_move(move);
             
-            float val = minimax(game, alpha, beta, depth - 1, move);
+            float val = minimax(game, alpha, beta, depth - 1, deadline, move);
 
             game.unplay_move(move);
             

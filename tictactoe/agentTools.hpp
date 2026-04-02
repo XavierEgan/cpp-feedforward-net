@@ -4,34 +4,28 @@
 #include "./enums.hpp"
 #include "../Eigen/Dense"
 
+#include <bits/chrono.h>
 #include <chrono>
 #include <iostream>
 #include <iomanip>
+#include <ratio>
+#include <stdexcept>
 #include <string>
 
 template <int N, int W, Agent<N, W> A1, Agent<N, W> A2>
 void benchmark_agents(A1 a1, A2 a2, int num_tests = 100) {
+    std::chrono::time_point<std::chrono::steady_clock> overall_start_time = std::chrono::steady_clock::now();
     TicTacToe<N, W> game;
-    using clock = std::chrono::steady_clock;
 
     int a1_wins = 0;
     int a2_wins = 0;
     int draws = 0;
 
-    double a1_total_move_ms = 0.0;
-    double a2_total_move_ms = 0.0;
-    int a1_total_move_count = 0;
-    int a2_total_move_count = 0;
+    std::chrono::duration total_time_a1 = std::chrono::duration<double, std::nano>(0);
+    std::chrono::duration total_time_a2 = std::chrono::duration<double, std::nano>(0);
 
-    double a1_first_move_ms = 0.0;
-    double a2_first_move_ms = 0.0;
-    int a1_first_move_count = 0;
-    int a2_first_move_count = 0;
-
-    std::unordered_map<int, double> a1_move_times;
-    std::unordered_map<int, double> a2_move_times;
-    std::unordered_map<int, double> a1_move_counts;
-    std::unordered_map<int, double> a2_move_counts;
+    int total_moves_a1 = 0;
+    int total_moves_a2 = 0;
 
     BoardSquare a1_piece = BoardSquare::X;
 
@@ -45,37 +39,21 @@ void benchmark_agents(A1 a1, A2 a2, int num_tests = 100) {
         for (int i = 0; i < N * N; i++) {
             int move;
             const bool is_a1_turn = game.next_player == a1_piece;
-            const auto start = clock::now();
+
+            std::chrono::time_point start_time = std::chrono::steady_clock::now();
             if (is_a1_turn) move = a1.get_move(game);
             else move = a2.get_move(game);
-            const auto end = clock::now();
-            const double move_ms = std::chrono::duration<double, std::milli>(end - start).count();
-
+            std::chrono::time_point end_time = std::chrono::steady_clock::now();
+            
             if (is_a1_turn) {
-                a1_total_move_ms += move_ms;
-                a1_total_move_count++;
-                if (i == 0) {
-                    a1_first_move_ms += move_ms;
-                    a1_first_move_count++;
-                }
-                if (!a1_move_times.contains(i)) a1_move_times[i] = move_ms;
-                else a1_move_times[i] += move_ms;
-                if (!a1_move_counts.contains(i)) a1_move_counts[i] = 1;
-                else a1_move_counts[i]++;
-            } else {
-                a2_total_move_ms += move_ms;
-                a2_total_move_count++;
-                if (i == 0) {
-                    a2_first_move_ms += move_ms;
-                    a2_first_move_count++;
-                }
-                if (!a2_move_times.contains(i)) a2_move_times[i] = move_ms;
-                else a2_move_times[i] += move_ms;
-                if (!a2_move_counts.contains(i)) a2_move_counts[i] = 1;
-                else a2_move_counts[i]++;
+                total_time_a1 += (end_time - start_time);
+                total_moves_a1++;
+            } else {    
+                total_time_a2 += (end_time - start_time);
+                total_moves_a2++;
             }
 
-            game.play_move(move);
+            if (!game.play_move(move)) throw std::runtime_error("agent played invalid move");
             winner = game.check_winner(move);
             if (winner != BoardSquare::EMPTY) break;
 
@@ -85,6 +63,8 @@ void benchmark_agents(A1 a1, A2 a2, int num_tests = 100) {
         else if (winner == a1_piece) a1_wins++;
         else a2_wins++;
         
+        std::cout << "game " << test + 1 << " played" << std::endl;
+
     }
 
     float a1_ratio = static_cast<float>(a1_wins) / num_tests;
@@ -111,33 +91,16 @@ void benchmark_agents(A1 a1, A2 a2, int num_tests = 100) {
     std::cout << " " << a2_color << a2.get_name() << ": " << a2_wins << " wins";
     std::cout << " " << draw_color << "draws: " << draws << reset << std::endl;
 
-    auto avg_or_zero = [](double total_ms, int count) {
-        return count > 0 ? total_ms / static_cast<double>(count) : 0.0;
-    };
+    std::chrono::duration<double, std::milli> avg_move_time_a1 = total_time_a1 / total_moves_a1;
+    std::chrono::duration<double, std::milli> avg_move_time_a2 = total_time_a2 / total_moves_a2;
 
-    const double a1_avg_first_ms = avg_or_zero(a1_first_move_ms, a1_first_move_count);
-    const double a2_avg_first_ms = avg_or_zero(a2_first_move_ms, a2_first_move_count);
-    const double a1_avg_any_ms = avg_or_zero(a1_total_move_ms, a1_total_move_count);
-    const double a2_avg_any_ms = avg_or_zero(a2_total_move_ms, a2_total_move_count);
+    std::cout << a1.get_name() << " avg move time: " << avg_move_time_a1.count() << std::endl;
+    std::cout << a2.get_name() << " avg move time: " << avg_move_time_a2.count() << std::endl;
 
-    for (auto& p : a1_move_times) {
-        p.second /= a1_move_counts[p.first];
-    }
-    for (auto& p : a2_move_times) {
-        p.second /= a2_move_counts[p.first];
-    }
+    std::chrono::time_point<std::chrono::steady_clock> overall_end_time = std::chrono::steady_clock::now();
 
-    auto a1_longest_av_move = *std::max_element(a1_move_times.begin(), a1_move_times.end(), [](const std::pair<int, double>& a, const std::pair<int, double>& b) {return a.second < b.second;} );
-    auto a2_longest_av_move = *std::max_element(a2_move_times.begin(), a2_move_times.end(), [](const std::pair<int, double>& a, const std::pair<int, double>& b) {return a.second < b.second;} );
-
-
-    std::cout << std::fixed << std::setprecision(3);
-    std::cout << "\nTiming summary (ms)\n";
-    std::cout << std::left << std::setw(18) << "Agent"       << std::right << std::setw(16) << "First move av"    << std::setw(16) << "Any move av" << "\n";
-    std::cout << std::setprecision(2) << std::left << std::setw(18) << a1.get_name() << std::right << std::setw(16) << a1_avg_first_ms << std::setw(16) << a1_avg_any_ms << "\n";
-    std::cout << std::left << std::setw(18) << a2.get_name() << std::right << std::setw(16) << a2_avg_first_ms << std::setw(16) << a2_avg_any_ms << "\n";
+    std::cout << std::chrono::duration_cast<std::chrono::milliseconds>(overall_end_time - overall_start_time).count() << "ms" << std::endl;
 }
-
 
 template <int N, int W, Agent<N, W> AX, Agent<N, W> AO>
 /*
