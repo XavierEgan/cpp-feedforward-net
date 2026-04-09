@@ -95,7 +95,9 @@ Dataset read_data(const std::string& data_loc) {
     return Dataset{images, labels};
 }
 
+#if defined(__i386__) || defined(__x86_64__)
 #include <immintrin.h>
+#endif
 
 void eval_on_test(Dataset& test_data, FFNN& ffnn) {
     int total_right = 0;
@@ -119,8 +121,10 @@ void eval_on_test(Dataset& test_data, FFNN& ffnn) {
 
 int main() {
     // subnormal floats are like 2.5x slower or so from testing, so we just turn them off
+    #if defined(__i386__) || defined(__x86_64__)
     _MM_SET_FLUSH_ZERO_MODE(_MM_FLUSH_ZERO_ON);
     _MM_SET_DENORMALS_ZERO_MODE(_MM_DENORMALS_ZERO_ON);
+    #endif
 
     Settings settings;
     std::srand(settings.seed);
@@ -128,8 +132,8 @@ int main() {
     Eigen::setNbThreads(std::thread::hardware_concurrency() / 2);
     std::cout << "num htreads: " << Eigen::nbThreads() << std::endl;
 
-    Dataset train_data = read_data("MNIST/Fashion-MNIST/train.csv");
-    Dataset test_data = read_data("MNIST/Fashion-MNIST/test.csv");
+    Dataset train_data = read_data("MNIST/MNIST/train.csv");
+    Dataset test_data = read_data("MNIST/MNIST/test.csv");
 
     FFNN ffnn = FFNN::from_random_he_scaling(
         settings.layer_sizes,
