@@ -14,11 +14,13 @@ void play() {
 
     MinimaxRev1Agent<board_size, win_length> mini_rev1(5);
     MinimaxRev2Agent<board_size, win_length> mini_rev2(4);
-    MinimaxRev3Agent<board_size, win_length> mini_rev3(25);
+    MinimaxRev3Agent<board_size, win_length> mini_rev3(100);
+    MinimaxRev4Agent<board_size, win_length> mini_rev4(100);
     HumanAgent<board_size, win_length> human;
     RandomAgent<board_size, win_length> random;
 
-    benchmark_agents<board_size, win_length>(mini_rev3, mini_rev2, 100);
+    benchmark_agents<board_size, win_length>(mini_rev4, mini_rev3, 100);
+    
 }
 
 int main() {

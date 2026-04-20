@@ -106,115 +106,38 @@ private:
         return moves[distrib(gen)];
     }
 
-    float block_heuristic(TicTacToe<N, W>& game, int move_x, int move_y, int move) {
-        // check if it blocks a row (if everything other than us is the opponent)
-        bool all_are_opponent = true;
-        for (int i = 0; i < N; i++) {
-            if (i == move_x) continue;
-            if (game.at(i, move_y) == BoardSquare::EMPTY || game.at(i, move_y) == game.next_player) {all_are_opponent = false; break;}
+    float block_heuristic(TicTacToe<N, W>& game, int move) {
+        // returns 1.0 if playing move blocks an opponent W-1-in-a-row threat
+        for (int wi : game.cell_to_windows[move]) {
+            const auto& ws = game.window_states[wi];
+            if (game.next_player == BoardSquare::X && ws.num_o == W - 1 && ws.num_x == 0) return 1.0f;
+            if (game.next_player == BoardSquare::O && ws.num_x == W - 1 && ws.num_o == 0) return 1.0f;
         }
-        if (all_are_opponent) return 1.0f;
-
-        // check col
-        all_are_opponent = true;
-        for (int i = 0; i < N; i++) {
-            if (i == move_y) continue;
-            if (game.at(move_x, i) == BoardSquare::EMPTY || game.at(move_x, i) == game.next_player) {all_are_opponent = false; break;}
-        }
-        if (all_are_opponent) return 1.0f;
-
-        // check top left to bottom right
-        if (move_x == move_y) {
-            all_are_opponent = true;
-            for (int i = 0; i < N * N; i += N + 1) {
-                if (i == move) continue;
-                if (game.at(i) == BoardSquare::EMPTY || game.at(i) == game.next_player) {all_are_opponent = false; break;}
-            }
-            if (all_are_opponent) return 1.0f;
-        }
-
-        // check top right to bottom left
-        if (move_x + move_y == N - 1) {
-            all_are_opponent = true;
-            for (int i = N - 1; i < N * N - 1; i += N - 1) {
-                if (i == move) continue;
-                if (game.at(i) == BoardSquare::EMPTY || game.at(i) == game.next_player) {all_are_opponent = false; break;}
-            }
-            if (all_are_opponent) return 1.0f;
-        }
-
         return 0.0f;
     }
 
     float win_heuristic(TicTacToe<N, W>& game, int move) {
-        game.play_move(move);
-        BoardSquare winner = game.check_winner(move);
-        game.unplay_move(move);
-
-        if (winner == game.next_player) return 1.0f;
-        if (winner == BoardSquare::EMPTY) return 0.0f;
-        return -1.0f;
+        // Returns 1.0 if playing move immediately wins
+        for (int wi : game.cell_to_windows[move]) {
+            const auto& ws = game.window_states[wi];
+            if (game.next_player == BoardSquare::X && ws.num_x == W - 1 && ws.num_o == 0) return 1.0f;
+            if (game.next_player == BoardSquare::O && ws.num_o == W - 1 && ws.num_x == 0) return 1.0f;
+        }
+        return 0.0f;
     }
 
-    float fork_heuristic(TicTacToe<N, W>& game, int move_x, int move_y, int move) {
-        auto check_direction = [&](int dx, int dy) -> int {
-            // keep count of how many we actually have in a row
-            // note how many we could get in a row in +dx +dy with one added
-            // note how many we could get in a row in -dy -dy with one added
-
-            int x = move_x + dx;
-            int y = move_y + dy;
-
-            int num_in_a_row = 1; // starts at 1 because of the move were checking
-            int possible_pos_in_a_row = 0;
-            int possible_neg_in_a_row = 0;
-
-            while (x >= 0 && x < N && y >= 0 && y < N) {
-                if (possible_pos_in_a_row == 0) {
-                    if (game.at(x, y) == game.next_player) num_in_a_row++;
-                    else if (game.at(x, y) == BoardSquare::EMPTY) possible_pos_in_a_row++;
-                } else {
-                    if (game.at(x, y) == game.next_player) possible_pos_in_a_row++;
-                    else if (game.at(x, y) == BoardSquare::EMPTY) possible_pos_in_a_row++;
-                }
-
-                x += dx;
-                y += dy;
-            }
-
-            x = move_x - dx;
-            y = move_y - dy;
-
-            while (x >= 0 && x < N && y >= 0 && y < N) {
-                if (possible_neg_in_a_row == 0) {
-                    if (game.at(x, y) == game.next_player) num_in_a_row++;
-                    else if (game.at(x, y) == BoardSquare::EMPTY) possible_neg_in_a_row++;
-                    else break;
-                } else {
-                    if (game.at(x, y) == game.next_player) possible_neg_in_a_row++;
-                    else if (game.at(x, y) == BoardSquare::EMPTY) possible_neg_in_a_row++;
-                    else break;
-                }
-
-                x -= dx;
-                y -= dy;
-            }
-
-            if (num_in_a_row + possible_pos_in_a_row >= W && num_in_a_row + possible_neg_in_a_row >= W) return 2;
-            else if (num_in_a_row + possible_pos_in_a_row >= W) return 1;
-            else if (num_in_a_row + possible_neg_in_a_row >= W) return 1;
-            else return 0;
-        };
-
-        int fork_count = 0;
-        fork_count += check_direction(1, 0);
-        fork_count += check_direction(0, 1);
-        fork_count += check_direction(1, 1);
-        fork_count += check_direction(-1, 1);
-
-        if (fork_count >= 2) return 0.9f;
-        if (fork_count == 1) return 0.5f;
-        else return 0.0f;
+    float fork_heuristic(TicTacToe<N, W>& game, int move) {
+        // Returns 0.9 if playing move creates >=2 new threats , 0.5 for one new threat
+        if constexpr (W < 3) return 0.0f;
+        int new_threats = 0;
+        for (int wi : game.cell_to_windows[move]) {
+            const auto& ws = game.window_states[wi];
+            if (game.next_player == BoardSquare::X && ws.num_o == 0 && ws.num_x == W - 2) new_threats++;
+            if (game.next_player == BoardSquare::O && ws.num_x == 0 && ws.num_o == W - 2) new_threats++;
+        }
+        if (new_threats >= 2) return 0.9f;
+        if (new_threats == 1) return 0.5f;
+        return 0.0f;
     }
 
     float center_heuristic(int move_x, int move_y) {
@@ -228,105 +151,28 @@ private:
         return 1.0f - (dist / max_dist);
     }
 
-    // returns how good the move is under some heuristics(larger is better)
+    // returns how good the move is under some heuristics (larger is better)
     // max return is 1
     float get_heuristic(TicTacToe<N, W>& game, int move) {
         // heuristics:
         // 1) block N in a rows - 1.0f
         // 2) create forks - 0.9f
         // 3) create threats - 0.5f
-        // 3) play towards the middle - 0.2f
-
+        // 4) play towards the middle - 0.2f (defined but unused)
         float heuristic = 0.0f;
-
-        int move_x = move % N;
-        int move_y = move / N;
-
-        heuristic += block_heuristic(game, move_x, move_y, move);
-
+        heuristic += block_heuristic(game, move);
         heuristic += win_heuristic(game, move);
-
-        heuristic += fork_heuristic(game, move_x, move_y, move);
-
+        heuristic += fork_heuristic(game, move);
         return heuristic;
     }
 
     float get_static_eval(TicTacToe<N, W>& game, int prev_move = -1) {
-        // static eval of the board, max = +-1.0
-        // x = +ve
-        // o = -ve
-        constexpr float o_const = -1.0f;
-        constexpr float x_const = 1.0f;
-        constexpr float win = 1.0f;
-        constexpr float threat = 0.1f; // if there are 10 threats then lets be honest its probably a win for you
-        constexpr float central_piece = 0.01f; // a single threat is vastly more valuable than a central piece
-
-        float eval = 0.0f;
-
         if (prev_move != -1) {
             BoardSquare winner = game.check_winner(prev_move);
-            if (winner == BoardSquare::O) return o_const * win;
-            else if (winner == BoardSquare::X) return win;
+            if (winner == BoardSquare::O) return -1.0f;
+            if (winner == BoardSquare::X) return  1.0f;
         }
-
-        auto eval_window = [&](int x, int y, int dx, int dy) -> float {
-            int num_x = 0;
-            int num_o = 0;
-            int num_empty = 0;
-
-            for (int i = 0; i < W; i++) {
-                BoardSquare sq = game.at(x + i * dx, y + i * dy);
-                if (sq == BoardSquare::X) num_x++;
-                else if (sq == BoardSquare::O) num_o++;
-                else num_empty++;
-            }
-
-            if (num_x > 0 && num_o > 0) return 0.0f;
-            if (num_x == 0 && num_o == 0) return 0.0f;
-
-            if (num_o == 0) {
-                if (num_x == W - 1 && num_empty == 1) return threat;
-                return threat * (static_cast<float>(num_x) / static_cast<float>(W));
-            }
-
-            if (num_x == 0) {
-                if (num_o == W - 1 && num_empty == 1) return -threat;
-                return -threat * (static_cast<float>(num_o) / static_cast<float>(W));
-            }
-
-            return 0.0f;
-        };
-
-        // sliding W-length windows
-        // rows
-        for (int y = 0; y < N; y++) {
-            for (int x = 0; x <= N - W; x++) {
-                eval += eval_window(x, y, 1, 0);
-            }
-        }
-
-        // cols
-        for (int x = 0; x < N; x++) {
-            for (int y = 0; y <= N - W; y++) {
-                eval += eval_window(x, y, 0, 1);
-            }
-        }
-
-        // diagonal TL -> BR
-        for (int y = 0; y <= N - W; y++) {
-            for (int x = 0; x <= N - W; x++) {
-                eval += eval_window(x, y, 1, 1);
-            }
-        }
-
-        // diagonal TR -> BL
-        for (int y = 0; y <= N - W; y++) {
-            for (int x = W - 1; x < N; x++) {
-                eval += eval_window(x, y, -1, 1);
-            }
-        }
-
-        return std::clamp(eval, -1.0f, 1.0f);
+        return std::clamp(game.static_eval, -1.0f, 1.0f);
     }
 
     float minimax(TicTacToe<N, W>& game, float alpha, float beta, int depth, std::chrono::steady_clock::time_point deadline, int prev_move = -1) {
@@ -336,11 +182,13 @@ private:
 
         if (prev_move != -1) {
             BoardSquare winner = game.check_winner(prev_move);
-            if (winner == BoardSquare::X) return 1.0f;
-            if (winner == BoardSquare::O) return -1.0f;
+
+            constexpr float eps = 0.001f;
+            if (winner == BoardSquare::X) return  1.0f + depth * eps;
+            if (winner == BoardSquare::O) return -1.0f - depth * eps;
         }
 
-        long long key = table.hash(game.board, game.next_player);
+        long long key = game.hash_val;
         if (table.contains(key)) {
             TranspositionTableEntry entry = table.get(key);
             if (entry.depth >= depth) {
