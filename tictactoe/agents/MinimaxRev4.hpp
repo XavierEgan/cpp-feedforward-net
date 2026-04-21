@@ -84,14 +84,17 @@ struct FlatTT {
 //    2.  TT not cleared between IDDFS depths → best moves carry forward.
 //    3.  TT best-move used as first candidate in move ordering.
 //    4.  Principal Variation Search (PVS / Negascout).
-//    5.  Aspiration windows in IDDFS (with exponential widening on fail).
-//    6.  Killer move heuristic (2 slots per ply).
-//    7.  History heuristic table (per-player, per-cell).
-//    8.  Immediate win / forced-block detection before full move generation.
-//    9.  Futility pruning at depth 1 nodes.
-//   10.  Improved leaf eval using incremental threat-count differential.
-//   11.  Quiescence search — at depth=0, keep searching while W-1 threats exist.
-//   12.  Late Move Reductions (LMR) — reduce depth for late, quiet moves.
+//    5.  Killer move heuristic (2 slots per ply).
+//    6.  History heuristic table (per-player, per-cell).
+//    7.  Immediate win / forced-block detection before full move generation.
+//    8.  Futility pruning at depth 1 nodes.
+//    9.  Improved leaf eval using W-1 and W-2 threat-count differential.
+//   10.  Quiescence search — at depth=0, keep searching while W-1 threats exist (cap=2).
+//   11.  Timeout guard after each recursive call to prevent alpha corruption.
+//   12.  TT cleared per move to prevent stale scores from earlier positions causing bad cutoffs.
+//
+//  Note: LMR was intentionally removed — this game is too tactical for late-move
+//  reductions to be safe (quiet moves can be critical for threat/block chains).
 //
 //  Template parameters:
 //    N   – board side length
@@ -127,45 +130,22 @@ struct MinimaxRev4Agent {
             std::chrono::steady_clock::now() +
             std::chrono::duration_cast<std::chrono::steady_clock::duration>(max_move_time);
 
-        // Clear history and killers at the start of a fresh move search.
+        // Clear all search state for a fresh move search.
+        // TT is also cleared to prevent stale scores from earlier board positions
+        // causing incorrect cutoffs (entries from 10+ moves ago share hash buckets).
         _clear_history();
         _clear_killers();
-        // Do NOT clear the TT — previous search info is still useful.
+        tt.clear();
 
         int prev_move = -1;
-
-        float aspiration_score = 0.0f;
-        bool  has_prev_score   = false;
 
         for (int depth = 0; ; ++depth) {
             int  cur_move  = -1;
             float cur_score = 0.0f;
 
-            if (has_prev_score) {
-                // Try aspiration window, widen exponentially on fail.
-                float delta = ASPIRATION_DELTA;
-                float lo    = aspiration_score - delta;
-                float hi    = aspiration_score + delta;
-
-                while (true) {
-                    if (std::chrono::steady_clock::now() >= deadline) break;
-                    auto [m, s] = _root_search(game, lo, hi, depth, deadline, seed);
-
-                    if (std::chrono::steady_clock::now() >= deadline) break;
-
-                    if (s <= lo) {
-                        lo = std::max(lo - delta, -INF);
-                        delta *= 2.0f;
-                    } else if (s >= hi) {
-                        hi = std::min(hi + delta, INF);
-                        delta *= 2.0f;
-                    } else {
-                        cur_move  = m;
-                        cur_score = s;
-                        break;
-                    }
-                }
-            } else {
+            // Always use full window — aspiration windows waste time budget on retries
+            // when the score changes between depths (common at deeper searches).
+            {
                 auto [m, s] = _root_search(game, -INF, INF, depth, deadline, seed);
                 cur_move  = m;
                 cur_score = s;
@@ -181,9 +161,7 @@ struct MinimaxRev4Agent {
             }
 
             if (cur_move != -1) {
-                prev_move       = cur_move;
-                aspiration_score = cur_score;
-                has_prev_score   = true;
+                prev_move = cur_move;
             }
         }
         // unreachable
@@ -199,12 +177,8 @@ private:
     static constexpr float FUTILITY_MARGIN  = 0.5f;   // for depth-1 futility pruning
     static constexpr int   MAX_DEPTH        = N * N;
     static constexpr int   NUM_KILLERS      = 2;
-    // LMR: only reduce moves beyond this index that are quiet and at sufficient depth.
-    static constexpr int   LMR_MOVE_THRESHOLD  = 3;   // first N moves are never reduced
-    static constexpr int   LMR_DEPTH_THRESHOLD = 2;   // only apply LMR at depth >= this
-    static constexpr int   LMR_REDUCTION       = 1;   // how many plies to reduce by
     // Quiescence search depth cap (extra plies beyond depth=0 for tactical resolution).
-    static constexpr int   QSEARCH_MAX_DEPTH   = 4;
+    static constexpr int   QSEARCH_MAX_DEPTH   = 2;
 
     // ── Data ─────────────────────────────────────────────────────────────────
     FlatTT<TS> tt;
@@ -311,10 +285,22 @@ private:
         // Blend static_eval (signed from X's perspective) with threat differential.
         float eval = std::clamp(game.static_eval, -1.0f, 1.0f);
 
-        // Threat bonus: each extra W-1 threat is worth ~0.05 points
+        // W-1 threat bonus (immediate threats).
         constexpr float THREAT_WEIGHT = 0.05f;
         float threat_diff = static_cast<float>(game.x_threat_count - game.o_threat_count) * THREAT_WEIGHT;
         eval = std::clamp(eval + threat_diff, -1.0f, 1.0f);
+
+        // W-2 threat bonus (potential open-ended threats), weighted less.
+        if constexpr (W >= 3) {
+            constexpr float THREAT2_WEIGHT = 0.015f;
+            int x_threats2 = 0, o_threats2 = 0;
+            for (const auto& ws : game.window_states) {
+                if (ws.num_x == W - 2 && ws.num_o == 0) ++x_threats2;
+                if (ws.num_o == W - 2 && ws.num_x == 0) ++o_threats2;
+            }
+            float threat2_diff = static_cast<float>(x_threats2 - o_threats2) * THREAT2_WEIGHT;
+            eval = std::clamp(eval + threat2_diff, -1.0f, 1.0f);
+        }
 
         // Convert to side-to-move perspective.
         return (game.next_player == BoardSquare::X) ? eval : -eval;
@@ -501,24 +487,22 @@ private:
                 // Full-window search for the first (best-ordered) child.
                 val = -_negamax(game, -beta, -alpha, depth - 1, deadline, mv, ply + 1);
             } else {
-                // Late Move Reduction: reduce depth for late, quiet moves.
-                // A move is "quiet" if its ordering score is below the killer threshold.
-                bool is_quiet = (move_buf[i].first < 1500.0f);
-                int reduced_depth = depth - 1;
-                if (is_quiet && i >= LMR_MOVE_THRESHOLD && depth >= LMR_DEPTH_THRESHOLD) {
-                    reduced_depth = depth - 1 - LMR_REDUCTION;
-                    if (reduced_depth < 0) reduced_depth = 0;
-                }
+                // Null-window search (PVS) at full depth for all non-first moves.
+                // LMR is intentionally not applied: this game is highly tactical and
+                // LMR incorrectly dismisses moves that are critical at deeper searches.
+                val = -_negamax(game, -alpha - 1e-4f, -alpha, depth - 1, deadline, mv, ply + 1);
 
-                // Null-window search (PVS) at possibly reduced depth.
-                val = -_negamax(game, -alpha - 1e-4f, -alpha, reduced_depth, deadline, mv, ply + 1);
-                // Re-search at full depth with full window if it failed high.
+                // Re-search at full window if it failed high.
                 if (val > alpha && std::chrono::steady_clock::now() < deadline) {
                     val = -_negamax(game, -beta, -alpha, depth - 1, deadline, mv, ply + 1);
                 }
             }
 
             game.unplay_move(mv);
+
+            // Discard result if deadline was hit during the recursive call — the
+            // returned 0.0f would corrupt alpha and mislead subsequent siblings.
+            if (std::chrono::steady_clock::now() >= deadline) return 0.0f;
 
             if (val > best_score) {
                 best_score = val;
