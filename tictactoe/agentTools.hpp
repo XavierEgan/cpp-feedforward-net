@@ -1,10 +1,9 @@
 #pragma once
 #include "./Agent.hpp"
-#include "./TicTacToe.hpp"
+#include "./tictactoe.hpp"
 #include "./enums.hpp"
 #include "../Eigen/Dense"
 
-#include <bits/chrono.h>
 #include <chrono>
 #include <iostream>
 #include <iomanip>

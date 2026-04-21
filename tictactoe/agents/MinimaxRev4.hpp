@@ -1,5 +1,5 @@
 #pragma once
-#include "../TicTacToe.hpp"
+#include "../tictactoe.hpp"
 #include "../enums.hpp"
 
 #include <algorithm>

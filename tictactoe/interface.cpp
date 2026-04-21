@@ -14,8 +14,8 @@ void play() {
 
     MinimaxRev1Agent<board_size, win_length> mini_rev1(5);
     MinimaxRev2Agent<board_size, win_length> mini_rev2(4);
-    MinimaxRev3Agent<board_size, win_length> mini_rev3(100);
-    MinimaxRev4Agent<board_size, win_length> mini_rev4(100);
+    MinimaxRev3Agent<board_size, win_length> mini_rev3(10);
+    MinimaxRev4Agent<board_size, win_length> mini_rev4(10);
     HumanAgent<board_size, win_length> human;
     RandomAgent<board_size, win_length> random;
 

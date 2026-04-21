@@ -129,7 +129,7 @@ int main() {
     Settings settings;
     std::srand(settings.seed);
 
-    Eigen::setNbThreads(std::thread::hardware_concurrency() / 2);
+    Eigen::setNbThreads(std::thread::hardware_concurrency());
     std::cout << "num htreads: " << Eigen::nbThreads() << std::endl;
 
     Dataset train_data = read_data("MNIST/MNIST/train.csv");
