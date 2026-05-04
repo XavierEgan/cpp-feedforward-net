@@ -61,7 +61,7 @@ struct FFNNAgent {
 
             prev_move = cur_move;
             last_depth = depth;
-            // if (depth >= N * N) break;
+            if (depth >= N * N) break;
         }
         return prev_move;
     }
