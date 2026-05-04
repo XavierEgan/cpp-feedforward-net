@@ -106,10 +106,10 @@ FFNN train_base_model(UserArgs user_args) {
     Eigen::MatrixXf minibatch;
     Eigen::MatrixXf minibatch_targets;
 
-    const int num_epochs = 10000;
+    const int num_epochs = 100000;
 
     for (int i = 0; i < num_epochs; i++) {
-        nn_utils::get_random_batch(inputs, targets, minibatch, minibatch_targets, 1000);
+        nn_utils::get_random_batch(inputs, targets, minibatch, minibatch_targets, 10000);
         optimiser.step(minibatch, minibatch_targets);
         std::cout << "Epoch: " << i + 1 << " done" << std::endl;
     }
