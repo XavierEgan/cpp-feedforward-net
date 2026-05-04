@@ -13,7 +13,7 @@
 #include <vector>
 
 // I pretty much told an ai model to improve Rev3 and ended up with this
-// It is substancially better than Rev3. In 100 games played against Rev3
+// It is substancially better than Rev3. In 100 games played against Rev3 TODO
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  Flat two-tier Transposition Table
