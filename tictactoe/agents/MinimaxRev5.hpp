@@ -189,6 +189,10 @@ struct MinimaxRev5Agent {
 
     std::string& get_name() { return name; }
 
+    int last_depth = -1;
+
+    int get_last_depth() const { return last_depth; }
+
     // Returns a static evaluation for the current position.
     float get_eval(TicTacToe<N, W>& game) {
         if constexpr (CFG.use_tt) tt.clear();
@@ -223,8 +227,9 @@ struct MinimaxRev5Agent {
             }
 
             if (m != -1) prev_move = m;
+            last_depth = depth;
+            if (depth >= N * N) break;
         }
-        // unreachable
         return prev_move;
     }
 
