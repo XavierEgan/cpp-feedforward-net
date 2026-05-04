@@ -128,19 +128,20 @@ UserArgs get_user_args() {
     if (new_run == 'y' || new_run == 'Y') {
         args.new_run = true;
         args.run_index = -1;
+
+        std::cout << "Use pregenerated game data for first training run? (y/n): ";
+        char use_pregen;
+        std::cin >> use_pregen;
+        args.use_pregenerated = (use_pregen == 'y' || use_pregen == 'Y');
     } else {
         args.new_run = false;
+        args.use_pregenerated = false;
 
         std::cout << "which run to load: ";
         int run_to_load;
         std::cin >> run_to_load;
         args.run_index = run_to_load;
     }
-
-    std::cout << "Use pregenerated game data for first training run? (y/n): ";
-    char use_pregen;
-    std::cin >> use_pregen;
-    args.use_pregenerated = (use_pregen == 'y' || use_pregen == 'Y');
 
     return args;
 }
@@ -162,7 +163,7 @@ int main() {
     if (user_args.new_run) {
         path = make_dir();
         ffnn = train_base_model(user_args);
-        store_model(path, "pretrained", ffnn);
+        store_model(path, "pretrained.ffnn", ffnn);
     } else {
         path = std::filesystem::path("tictactoe/training_runs/run_" + std::to_string(user_args.run_index));
         FFNN ffnn = FFNN::from_file(path / "pretrained.ffnn");

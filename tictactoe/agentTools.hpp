@@ -26,6 +26,9 @@ void benchmark_agents(A1 a1, A2 a2, int num_tests = 100) {
     int total_moves_a1 = 0;
     int total_moves_a2 = 0;
 
+    long long total_depth_a1 = 0;
+    long long total_depth_a2 = 0;
+
     BoardSquare a1_piece = BoardSquare::X;
 
     for (int test = 0; test < num_tests; test++) {
@@ -47,9 +50,13 @@ void benchmark_agents(A1 a1, A2 a2, int num_tests = 100) {
             if (is_a1_turn) {
                 total_time_a1 += (end_time - start_time);
                 total_moves_a1++;
+                if constexpr (requires { a1.get_last_depth(); })
+                    if (a1.get_last_depth() >= 0) total_depth_a1 += a1.get_last_depth();
             } else {    
                 total_time_a2 += (end_time - start_time);
                 total_moves_a2++;
+                if constexpr (requires { a2.get_last_depth(); })
+                    if (a2.get_last_depth() >= 0) total_depth_a2 += a2.get_last_depth();
             }
 
             if (!game.play_move(move)) throw std::runtime_error("agent played invalid move");
@@ -93,8 +100,13 @@ void benchmark_agents(A1 a1, A2 a2, int num_tests = 100) {
     std::chrono::duration<double, std::milli> avg_move_time_a1 = total_time_a1 / total_moves_a1;
     std::chrono::duration<double, std::milli> avg_move_time_a2 = total_time_a2 / total_moves_a2;
 
-    std::cout << a1.get_name() << " avg move time: " << avg_move_time_a1.count() << std::endl;
-    std::cout << a2.get_name() << " avg move time: " << avg_move_time_a2.count() << std::endl;
+    std::cout << a1.get_name() << " avg move time: " << avg_move_time_a1.count() << "ms" << std::endl;
+    std::cout << a2.get_name() << " avg move time: " << avg_move_time_a2.count() << "ms" << std::endl;
+
+    if constexpr (requires { a1.get_last_depth(); })
+        std::cout << a1.get_name() << " avg depth: " << static_cast<float>(total_depth_a1) / total_moves_a1 << std::endl;
+    if constexpr (requires { a2.get_last_depth(); })
+        std::cout << a2.get_name() << " avg depth: " << static_cast<float>(total_depth_a2) / total_moves_a2 << std::endl;
 
     std::chrono::time_point<std::chrono::steady_clock> overall_end_time = std::chrono::steady_clock::now();
 

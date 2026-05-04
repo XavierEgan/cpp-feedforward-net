@@ -32,6 +32,10 @@ struct FFNNAgent {
         return name;
     }
 
+    int last_depth = -1;
+
+    int get_last_depth() const { return last_depth; }
+
     int get_move(TicTacToe<N, W>& game, int seed = std::random_device{}()) {
         // try get move at depth 1, then depth 2 etc and use the last move that didnt time out
         std::chrono::steady_clock::time_point deadline = std::chrono::steady_clock::now() + std::chrono::duration_cast<std::chrono::steady_clock::duration>(max_move_time);
@@ -56,7 +60,10 @@ struct FFNNAgent {
             }
 
             prev_move = cur_move;
+            last_depth = depth;
+            // if (depth >= N * N) break;
         }
+        return prev_move;
     }
 private:
     TranspositionTable<N, B> table;
