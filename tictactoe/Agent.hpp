@@ -25,4 +25,5 @@ concept Agent = requires(T agent, TicTacToe<N, W>& game) {
 #include "./agents/MinimaxRev2.hpp"
 #include "./agents/MinimaxRev3.hpp"
 #include "./agents/MinimaxRev4.hpp"
+#include "./agents/MinimaxRev5.hpp"
 #include "./agents/Random.hpp"

@@ -101,28 +101,34 @@ void benchmark_agents(A1 a1, A2 a2, int num_tests = 100) {
     std::cout << std::chrono::duration_cast<std::chrono::milliseconds>(overall_end_time - overall_start_time).count() << "ms" << std::endl;
 }
 
-template <int N, int W, Agent<N, W> AX, Agent<N, W> AO>
+template <int N, int W, Agent<N, W> A1, Agent<N, W> A2>
 /*
 inputs gets board states appended to it
-targets gets board state evaluation from ax appended to it
+targets gets board state evaluation from a1 appended to it
 */
-void get_training_data(AX ax, AO ao, std::vector<Eigen::MatrixXf>& inputs, std::vector<Eigen::MatrixXf>& targets, int num_games = 1000) {
+void get_training_data(A1 a1, A2 a2, std::vector<Eigen::MatrixXf>& inputs, std::vector<Eigen::MatrixXf>& targets, int num_games = 1000) {
     TicTacToe<N, W> game;
+
+    BoardSquare a1_piece = BoardSquare::X;
 
     for (int g = 0; g < num_games; g++) {
         game.restart();
 
-        std::cout << "game " << g + 1 << " played" << std::endl;
+        a1_piece = a1_piece == BoardSquare::X ? BoardSquare::O : BoardSquare::X;
+
+        std::cout << "game " << g + 1 << "/" << num_games << " played" << std::endl;
 
         for (int i = 0; i < N * N; i++) {
             int move;
-            if (game.next_player == BoardSquare::X) move = ax.get_move(game);
-            if (game.next_player == BoardSquare::O) move = ao.get_move(game);
+            if (game.next_player == a1_piece) move = a1.get_move(game);
+            else move = a2.get_move(game);
             game.play_move(move);
 
             inputs.push_back(game.get_board_state());
             Eigen::MatrixXf target(1, 1);
-            target(0, 0) = ax.get_eval(game);
+            target(0, 0) = a1.get_eval(game);
+            if (game.next_player == BoardSquare::O) target *= -1;
+            targets.push_back(target);
 
             BoardSquare winner = game.check_winner(move);
             if (winner != BoardSquare::EMPTY) break;
