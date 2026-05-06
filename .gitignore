@@ -1,0 +1,6 @@
+*.dSYM
+*.exe
+test
+.DS_Store
+*.dat
+*.csv

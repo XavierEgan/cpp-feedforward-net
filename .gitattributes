@@ -1,0 +1,6 @@
+MNIST/archive/mnist_train.csv filter=lfs diff=lfs merge=lfs -text
+MNIST/Fashion-MNIST/fashion-mnist_test.csv filter=lfs diff=lfs merge=lfs -text
+MNIST/Fashion-MNIST/fashion-mnist_test.csv filter=lfs diff=lfs merge=lfs -text
+MNIST/Fashion-MNIST/fashion-mnist_train.csv filter=lfs diff=lfs merge=lfs -text
+MNIST/MNIST/mnist_test.csv filter=lfs diff=lfs merge=lfs -text
+MNIST/MNIST/mnist_train.csv filter=lfs diff=lfs merge=lfs -text
