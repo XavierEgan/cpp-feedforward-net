@@ -2,13 +2,13 @@
 
 A lightweight C++ feedforward neural network project built around `Eigen::MatrixXf`.
 
-This repository is focused on:
+This repository is built for:
 
 - learning and experimenting with core neural-network training loops,
 - keeping the code easy to inspect and tweak,
 - and providing a few concrete example projects (toy benchmark, MNIST/Fashion-MNIST, tic-tac-toe scaffold).
 
-It is intentionally simple and header-driven, so you can read the implementation directly and modify it quickly.
+The code is intentionally simple and header-driven, so the implementation is easy to read and modify.
 
 ---
 
@@ -22,7 +22,6 @@ It is intentionally simple and header-driven, so you can read the implementation
 - [Quick Start API Example](#quick-start-api-example)
 - [Included Example Projects](#included-example-projects)
 - [Model Saving and Loading](#model-saving-and-loading)
-- [Design Notes](#design-notes)
 - [Common Gotchas](#common-gotchas)
 - [Performance Tips](#performance-tips)
 - [Where to Extend Next](#where-to-extend-next)
@@ -31,7 +30,7 @@ It is intentionally simple and header-driven, so you can read the implementation
 
 ## What This Project Does
 
-At a high level, this repo gives you a small neural-net training framework in modern C++.
+At a high level, this repo provides a small neural-network training framework in modern C++.
 
 You define:
 
@@ -111,7 +110,7 @@ Top-level highlights:
 - `main.cpp`: simple optimizer comparison demo
 - `MNIST/MNIST.cpp`: training example on CSV image data
 - `MNIST/MNIST_inference.cpp`: inference/evaluation example
-- `tictactoe/`: early scaffold for game-based training ideas
+- `tictactoe/`: board engine, minimax agents, benchmarking utilities, and FFNN training experiments
 - `Eigen/`: vendored Eigen headers
 
 ---
@@ -130,7 +129,7 @@ No external package manager is required for the core code path shown here.
 
 ## Build and Run
 
-Since this is a header-only project, compilation of examples is done with direct command-line calls to `g++` or `clang++`. 
+Since this is a header-only project, the examples are compiled with direct `g++` or `clang++` commands.
 
 ### 1) Basic Demo (`main.cpp`)
 
@@ -180,7 +179,14 @@ g++ -std=c++23 -O3 -o mnist_infer.exe MNIST/MNIST_inference.cpp
 mnist_infer.exe
 ```
 
-### 4) Tic-Tac-Toe Training Scaffold
+### 4) Tic-Tac-Toe Benchmark Example
+
+```bash
+g++ -std=c++23 -O3 -o ttt_play.exe tictactoe/interface.cpp
+ttt_play.exe
+```
+
+### 5) Tic-Tac-Toe FFNN Training Example
 
 ```bash
 g++ -std=c++23 -O3 -o ttt_train.exe tictactoe/train.cpp
@@ -198,21 +204,21 @@ Use this if you want a minimal in-code setup:
 #include "AdamOptimiser.hpp"
 
 int main() {
-		std::vector<size_t> shape = {128, 256, 128};
-		std::vector<ActivationFunc> acts = {relu, relu};
+	std::vector<size_t> shape = {128, 256, 128};
+	std::vector<ActivationFunc> acts = {relu, relu};
 
-		FFNN model = FFNN::from_random_he_scaling(shape, acts);
-		AdamOptimiser opt(model, CostType::quadratic, 1e-3);
+	FFNN model = FFNN::from_random_he_scaling(shape, acts);
+	AdamOptimiser opt(model, CostType::quadratic, 1e-3);
 
-		Eigen::MatrixXf x = Eigen::MatrixXf::Random(128, 64);
-		Eigen::MatrixXf y = Eigen::MatrixXf::Random(128, 64);
+	Eigen::MatrixXf x = Eigen::MatrixXf::Random(128, 64);
+	Eigen::MatrixXf y = Eigen::MatrixXf::Random(128, 64);
 
-		for (int i = 0; i < 1000; ++i) {
-				float cost = opt.step(x, y);
-				if (i % 100 == 0) {
-						std::cout << "step=" << i << " cost=" << cost << "\n";
-				}
+	for (int i = 0; i < 1000; ++i) {
+		float cost = opt.step(x, y);
+		if (i % 100 == 0) {
+			std::cout << "step=" << i << " cost=" << cost << "\n";
 		}
+	}
 }
 ```
 
@@ -234,7 +240,7 @@ Runs two identical network setups in parallel:
 - both trained on random synthetic data.
 
 Useful for quickly sanity-checking update behavior.
-You should see Adam converge faster (hard to see because it converges very fast), and GD achieving 
+You should see Adam converge faster than plain gradient descent on the same synthetic data.
 
 ### `MNIST/MNIST.cpp` training on CSV datasets
 
@@ -262,15 +268,27 @@ What it does:
 
 If your filenames differ, update the hardcoded paths in the source file.
 
-### `tictactoe/` scaffold
+### `tictactoe/` search and training experiments
 
-This folder appears to be an early framework for self-play style training experimentation.
+This folder contains a board engine, search agents, and training experiments rather than a placeholder scaffold.
 
-Current `train.cpp` is a minimal placeholder and can be used as a starting point for:
+Current code centers on a `5x5` board with a `4-in-a-row` win condition and includes:
 
-- board encoding,
-- policy/value targets,
-- and game-loop data generation.
+- a reusable `TicTacToe<N, W>` game type,
+- random, human, and multiple minimax agents (`MinimaxRev1` through `MinimaxRev5`),
+- benchmarking utilities for agent-vs-agent matches,
+- an `FFNNAgent` that uses the neural net as a board evaluator inside minimax,
+- and training-data generation from self-play or minimax-vs-minimax games.
+
+`tictactoe/interface.cpp` currently benchmarks search agents, with the default setup comparing `MinimaxRev4` and `MinimaxRev5`.
+
+`tictactoe/train.cpp` supports a simple training workflow:
+
+- start a new run or load an existing run,
+- optionally reuse pregenerated board/evaluation pairs,
+- train a small FFNN on minimax-generated targets,
+- save the trained network under `tictactoe/training_runs/run_x/`,
+- and benchmark the resulting FFNN-backed agent against `MinimaxRev4`.
 
 ---
 
@@ -292,15 +310,6 @@ This makes it straightforward to separate training and inference programs.
 
 ---
 
-## Design Notes
-
-- Uses `Eigen::MatrixXf` throughout (single precision).
-- Focuses on readability and experimentation over framework-level abstraction.
-- Most functionality is in headers, so stepping through in a debugger is simple.
-- Validation checks exist for shape/layer assumptions and some cost/activation pairings.
-
----
-
 ## Common Gotchas
 
 - Activation/cost pairing matters:
@@ -309,29 +318,3 @@ This makes it straightforward to separate training and inference programs.
 - File paths in examples are hardcoded; adjust if your dataset names differ.
 - Batch dimensions are column-oriented in this implementation style.
 - If OpenMP flags are unsupported on your compiler, compile without them first.
-
----
-
-## Performance Tips
-
-- Build with `-O3` for meaningful training speed.
-- Consider `-march=native` where available.
-- On some CPUs, denormals can hurt performance; this repo includes examples of enabling flush-to-zero in training code.
-- If profiling shows I/O bottlenecks, cache parsed datasets in a binary format.
-
----
-
-## Where to Extend Next
-
-Good next improvements if you want to keep building this out:
-
-- add a `CMakeLists.txt` for easier cross-platform builds,
-- add train/val split and early stopping,
-- add mini-batch iterator classes instead of one-shot random sampling,
-- add additional layers (dropout, batch norm),
-- add unit tests for forward/backward correctness,
-- add command-line flags for dataset path and hyperparameters.
-
----
-
-If you are exploring neural nets from first principles in C++, this codebase is a solid practical sandbox: compact enough to understand end-to-end, but capable enough to run real training loops.
