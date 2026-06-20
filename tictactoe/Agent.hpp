@@ -3,6 +3,7 @@
 #include "./enums.hpp"
 #include "./TranspositionTable.hpp"
 #include "../FFNN.hpp"
+#include "../TrainingData.hpp"
 
 #include <concepts>
 #include <array>
