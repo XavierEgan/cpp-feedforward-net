@@ -12,7 +12,7 @@
 #include <string>
 
 template <int N, int W, Agent<N, W> A1, Agent<N, W> A2>
-void benchmark_agents(A1 a1, A2 a2, int num_tests = 100) {
+void benchmark_agents(A1& a1, A2& a2, int num_tests = 100) {
     std::chrono::time_point<std::chrono::steady_clock> overall_start_time = std::chrono::steady_clock::now();
     TicTacToe<N, W> game;
 
@@ -118,17 +118,19 @@ template <int N, int W, Agent<N, W> A1, Agent<N, W> A2>
 inputs gets board states appended to it
 targets gets board state evaluation from a1 appended to it
 */
-void get_training_data(A1 a1, A2 a2, std::vector<Eigen::MatrixXf>& inputs, std::vector<Eigen::MatrixXf>& targets, int num_games = 1000) {
+TrainingData get_training_data(A1 a1, A2 a2, int num_games = 1000, bool quiet = true) {
     TicTacToe<N, W> game;
 
     BoardSquare a1_piece = BoardSquare::X;
+
+    TrainingData training_data{};
 
     for (int g = 0; g < num_games; g++) {
         game.restart();
 
         a1_piece = a1_piece == BoardSquare::X ? BoardSquare::O : BoardSquare::X;
 
-        std::cout << "game " << g + 1 << "/" << num_games << " played" << std::endl;
+        if (!quiet) std::cout << "game " << g + 1 << "/" << num_games << " played" << std::endl;
 
         for (int i = 0; i < N * N; i++) {
             int move;
@@ -136,14 +138,16 @@ void get_training_data(A1 a1, A2 a2, std::vector<Eigen::MatrixXf>& inputs, std::
             else move = a2.get_move(game);
             game.play_move(move);
 
-            inputs.push_back(game.get_board_state());
+            training_data.inputs.push_back(game.get_board_state());
             Eigen::MatrixXf target(1, 1);
             target(0, 0) = a1.get_eval(game);
             if (game.next_player == BoardSquare::O) target *= -1;
-            targets.push_back(target);
+            training_data.labels.push_back(target);
 
             BoardSquare winner = game.check_winner(move);
             if (winner != BoardSquare::EMPTY) break;
         }
     }
+
+    return training_data;
 }
