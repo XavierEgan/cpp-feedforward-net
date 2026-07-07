@@ -14,17 +14,17 @@
 //   [float * input_rows * input_cols] input data (column-major) -- repeated n_samples times
 //   [float * label_rows * label_cols] label data (column-major) -- repeated n_samples times
 
-class TrainingData {
+class DataSet {
 public:
     std::vector<Eigen::MatrixXf> inputs;
     std::vector<Eigen::MatrixXf> labels;
 
     void write(const std::string& path) const {
         if (inputs.size() != labels.size())
-            throw std::runtime_error("TrainingData: inputs and labels size mismatch");
+            throw std::runtime_error("DataSet: inputs and labels size mismatch");
 
         std::ofstream f(path, std::ios::binary);
-        if (!f) throw std::runtime_error("TrainingData: cannot open file for writing: " + path);
+        if (!f) throw std::runtime_error("DataSet: cannot open file for writing: " + path);
 
         uint64_t n = static_cast<uint64_t>(inputs.size());
         f.write(reinterpret_cast<const char*>(&n), sizeof(n));
@@ -50,12 +50,25 @@ public:
                     labels[i].size() * sizeof(float));
         }
 
-        if (!f) throw std::runtime_error("TrainingData: write failed: " + path);
+        if (!f) throw std::runtime_error("DataSet: write failed: " + path);
     }
 
     void load(const std::string& path) {
+        inputs.clear();
+        labels.clear();
+        append(path);
+    }
+
+    void load(const std::vector<std::string>& paths) {
+        inputs.clear();
+        labels.clear();
+        for (const auto& p : paths)
+            append(p);
+    }
+
+    void append(const std::string& path) {
         std::ifstream f(path, std::ios::binary);
-        if (!f) throw std::runtime_error("TrainingData: cannot open file for reading: " + path);
+        if (!f) throw std::runtime_error("DataSet: cannot open file for reading: " + path);
 
         uint64_t n;
         f.read(reinterpret_cast<char*>(&n), sizeof(n));
@@ -66,21 +79,29 @@ public:
         f.read(reinterpret_cast<char*>(&lr), sizeof(lr));
         f.read(reinterpret_cast<char*>(&lc), sizeof(lc));
 
-        inputs.resize(n);
-        labels.resize(n);
+        if (!inputs.empty()) {
+            if (ir != inputs[0].rows() || ic != inputs[0].cols() ||
+                lr != labels[0].rows() || lc != labels[0].cols())
+                throw std::runtime_error("DataSet: shape mismatch when appending: " + path);
+        }
+
+        size_t offset = inputs.size();
+        inputs.resize(offset + n);
+        labels.resize(offset + n);
 
         for (uint64_t i = 0; i < n; ++i) {
-            inputs[i].resize(ir, ic);
-            f.read(reinterpret_cast<char*>(inputs[i].data()),
+            inputs[offset + i].resize(ir, ic);
+            f.read(reinterpret_cast<char*>(inputs[offset + i].data()),
                    ir * ic * sizeof(float));
         }
         for (uint64_t i = 0; i < n; ++i) {
-            labels[i].resize(lr, lc);
-            f.read(reinterpret_cast<char*>(labels[i].data()),
+            labels[offset + i].resize(lr, lc);
+            f.read(reinterpret_cast<char*>(labels[offset + i].data()),
                    lr * lc * sizeof(float));
         }
 
         if (!f && !f.eof())
-            throw std::runtime_error("TrainingData: read failed: " + path);
+            throw std::runtime_error("DataSet: read failed: " + path);
     }
+
 };

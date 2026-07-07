@@ -1,13 +1,9 @@
 #include "../AdamOptimiser.hpp"
+#include "../DataSet.hpp"
 
 #include <fstream>
 
-struct Dataset {
-    std::vector<Eigen::MatrixXf> images;
-    std::vector<Eigen::MatrixXf> labels;
-};
-
-Dataset read_data(const std::string& data_loc) {
+DataSet read_data(const std::string& data_loc) {
     std::ifstream data_file(data_loc);
 
     if (!data_file) {
@@ -30,9 +26,6 @@ Dataset read_data(const std::string& data_loc) {
         if (i  % 100 == 0) {
             std::cout << "Reading line " << i << " From file " << data_loc << std::endl;
         }
-        if (i  == 1000) {
-            //return Dataset{images, labels};
-        }
         i++;
 
         Eigen::MatrixXf label = Eigen::MatrixXf::Zero(10, 1);
@@ -52,32 +45,26 @@ Dataset read_data(const std::string& data_loc) {
             image(i, 0) = pixel;
         }
 
+        
+
         images.push_back(image);
         labels.push_back(label);
     }
-    return Dataset{images, labels};
+    std::cout << images.size() << ", " << labels.size() << "\n";
+    return DataSet{images, labels};
 }
 
 
 int main() {
-    FFNN ffnn = FFNN::from_file("mnist_ffnn_98_5_70000.dat");
+    DataSet test_data = read_data("MNIST/MNIST/test.csv");
+    DataSet train_data = read_data("MNIST/MNIST/train.csv");
 
-    Dataset test_data = read_data("MNIST/MNIST/mnist_test.csv");
+    DataSet fashion_test_data = read_data("MNIST/Fashion-MNIST/test.csv");
+    DataSet fashion_train_data = read_data("MNIST/Fashion-MNIST/train.csv");
 
-    int total_right = 0;
-    for (int d = 0; d < (int)test_data.images.size(); d++) {
-        // ground-truth = argmax(label)
-        Eigen::Index gt_r = 0, gt_c = 0;
-        test_data.labels[d].maxCoeff(&gt_r, &gt_c);
-        const Eigen::Index gt = gt_r;
+    test_data.write("MNIST/MNIST/bin/test.dat");
+    train_data.write("MNIST/MNIST/bin/train.dat");
 
-        // prediction = argmax(output)
-        auto res = ffnn.forward(test_data.images[d]);
-        Eigen::Index pred_r = 0, pred_c = 0;
-        res.maxCoeff(&pred_r, &pred_c);
-        const Eigen::Index pred = pred_r;
-
-        if (pred == gt) total_right++;
-    }
-    std::cout << "Total test correct: " << total_right << " Percentage right: " << (static_cast<float>(total_right) / static_cast<float>(test_data.images.size())) * 100.0f << "%" << std::endl;
+    fashion_test_data.write("MNIST/Fashion-MNIST/bin/test.dat");
+    fashion_train_data.write("MNIST/Fashion-MNIST/bin/train.dat");
 }
