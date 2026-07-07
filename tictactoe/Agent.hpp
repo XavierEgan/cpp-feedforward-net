@@ -3,7 +3,7 @@
 #include "./enums.hpp"
 #include "./TranspositionTable.hpp"
 #include "../FFNN.hpp"
-#include "../TrainingData.hpp"
+#include "../DataSet.hpp"
 
 #include <concepts>
 #include <array>
@@ -26,5 +26,4 @@ concept Agent = requires(T agent, TicTacToe<N, W>& game) {
 #include "./agents/MinimaxRev2.hpp"
 #include "./agents/MinimaxRev3.hpp"
 #include "./agents/MinimaxRev4.hpp"
-#include "./agents/MinimaxRev5.hpp"
 #include "./agents/Random.hpp"

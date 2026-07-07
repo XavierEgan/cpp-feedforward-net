@@ -29,6 +29,12 @@ void benchmark_agents(A1& a1, A2& a2, int num_tests = 100) {
     long long total_depth_a1 = 0;
     long long total_depth_a2 = 0;
 
+    // Per-move-number depth accumulation (index = half-move number 0..N*N-1).
+    std::array<long long, N * N> depth_by_move_a1{};
+    std::array<long long, N * N> depth_by_move_a2{};
+    std::array<int,       N * N> count_by_move_a1{};
+    std::array<int,       N * N> count_by_move_a2{};
+
     BoardSquare a1_piece = BoardSquare::X;
 
     for (int test = 0; test < num_tests; test++) {
@@ -46,17 +52,27 @@ void benchmark_agents(A1& a1, A2& a2, int num_tests = 100) {
             if (is_a1_turn) move = a1.get_move(game);
             else move = a2.get_move(game);
             std::chrono::time_point end_time = std::chrono::steady_clock::now();
-            
+
             if (is_a1_turn) {
                 total_time_a1 += (end_time - start_time);
                 total_moves_a1++;
-                if constexpr (requires { a1.get_last_depth(); })
-                    if (a1.get_last_depth() >= 0) total_depth_a1 += a1.get_last_depth();
-            } else {    
+                if constexpr (requires { a1.get_last_depth(); }) {
+                    if (a1.get_last_depth() >= 0) {
+                        total_depth_a1 += a1.get_last_depth();
+                        depth_by_move_a1[i] += a1.get_last_depth();
+                        count_by_move_a1[i]++;
+                    }
+                }
+            } else {
                 total_time_a2 += (end_time - start_time);
                 total_moves_a2++;
-                if constexpr (requires { a2.get_last_depth(); })
-                    if (a2.get_last_depth() >= 0) total_depth_a2 += a2.get_last_depth();
+                if constexpr (requires { a2.get_last_depth(); }) {
+                    if (a2.get_last_depth() >= 0) {
+                        total_depth_a2 += a2.get_last_depth();
+                        depth_by_move_a2[i] += a2.get_last_depth();
+                        count_by_move_a2[i]++;
+                    }
+                }
             }
 
             if (!game.play_move(move)) throw std::runtime_error("agent played invalid move");
@@ -118,12 +134,12 @@ template <int N, int W, Agent<N, W> A1, Agent<N, W> A2>
 inputs gets board states appended to it
 targets gets board state evaluation from a1 appended to it
 */
-TrainingData get_training_data(A1 a1, A2 a2, int num_games = 1000, bool quiet = true) {
+DataSet get_training_data(A1 a1, A2 a2, int num_games = 1000, bool quiet = true) {
     TicTacToe<N, W> game;
 
     BoardSquare a1_piece = BoardSquare::X;
 
-    TrainingData training_data{};
+    DataSet training_data{};
 
     for (int g = 0; g < num_games; g++) {
         game.restart();
