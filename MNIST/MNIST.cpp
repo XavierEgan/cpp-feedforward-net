@@ -32,16 +32,13 @@ struct Settings {
 float eval_on_test(const DataSet& test_data, const FFNN& ffnn, bool quiet = true) {
     int total_right = 0;
 
-    // get all predictions
-    Eigen::MatrixXf inputs;
-    Eigen::MatrixXf targets;
-    nn_utils::get_random_batch(test_data.inputs, test_data.labels, inputs, targets, -1);
-    const auto predictions = ffnn.forward(inputs);
+    // get all predictions in one forward pass
+    const auto predictions = ffnn.forward(test_data.inputs);
 
-    for (int i = 0; i < inputs.cols(); i++) {
+    for (Eigen::Index i = 0; i < test_data.inputs.cols(); i++) {
         // answer
         Eigen::Index answer = 0, answer_col = 0;
-        targets.col(i).maxCoeff(&answer, &answer_col);
+        test_data.labels.col(i).maxCoeff(&answer, &answer_col);
 
         // prediction
         Eigen::Index prediction = 0, prediction_col = 0;
@@ -51,9 +48,9 @@ float eval_on_test(const DataSet& test_data, const FFNN& ffnn, bool quiet = true
     }
 
     if (!quiet)
-        std::cout << "Total test correct: " << total_right << " Percentage right: " << (static_cast<float>(total_right) / static_cast<float>(test_data.inputs.size())) * 100.0f << "%" << std::endl;
+        std::cout << "Total test correct: " << total_right << " Percentage right: " << (static_cast<float>(total_right) / static_cast<float>(test_data.size())) * 100.0f << "%" << std::endl;
 
-    return static_cast<float>(total_right) / static_cast<float>(test_data.inputs.size());
+    return static_cast<float>(total_right) / static_cast<float>(test_data.size());
 }
 
 int main() {
@@ -72,15 +69,13 @@ int main() {
 
     srand(settings.seed);
 
-    DataSet test_dataset = DataSet();
-    test_dataset.load("MNIST/bin/test.dat");
-
-    DataSet train_dataset = DataSet();
-    train_dataset.load("MNIST/bin/train.dat");
+    DataSet test_dataset = DataSet::from_file("MNIST/bin/test.dat");
+    DataSet train_dataset = DataSet::from_file("MNIST/bin/train.dat");
 
     FFNN ffnn = FFNN::from_random_he_scaling(settings.ffnn_shape, settings.ffnn_funcs);
 
     AdamOptimiser optimiser = AdamOptimiser::from_ffnn(ffnn, settings.cost_type, settings.lr, settings.reg_type);
+    Batcher batcher = Batcher::from_dataset(train_dataset, settings.seed);
     Eigen::MatrixXf inputs;
     Eigen::MatrixXf targets;
 
@@ -88,7 +83,7 @@ int main() {
     int best_test_epoch = 0;
 
     for (auto epoch{0uz}; epoch < settings.num_epochs; epoch++) {
-        nn_utils::get_random_batch(train_dataset.inputs, train_dataset.labels, inputs, targets, settings.batch_size, settings.seed);
+        batcher.next_batch(settings.batch_size, inputs, targets);
 
         for (Eigen::Index j = 0; j < inputs.cols(); j++) {
             if (static_cast<double>(rand()) / RAND_MAX < settings.chance_for_noise) {

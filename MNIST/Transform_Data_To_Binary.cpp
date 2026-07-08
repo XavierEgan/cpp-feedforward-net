@@ -2,6 +2,8 @@
 #include "../DataSet.hpp"
 
 #include <fstream>
+#include <sstream>
+#include <filesystem>
 
 DataSet read_data(const std::string& data_loc) {
     std::ifstream data_file(data_loc);
@@ -13,8 +15,8 @@ DataSet read_data(const std::string& data_loc) {
 
     std::string line;
 
-    std::vector<Eigen::MatrixXf> images;
-    std::vector<Eigen::MatrixXf> labels;
+    std::vector<Eigen::VectorXf> images;
+    std::vector<Eigen::VectorXf> labels;
     images.reserve(60000);
     labels.reserve(60000);
 
@@ -28,30 +30,28 @@ DataSet read_data(const std::string& data_loc) {
         }
         i++;
 
-        Eigen::MatrixXf label = Eigen::MatrixXf::Zero(10, 1);
-        Eigen::MatrixXf image(784, 1);
+        Eigen::VectorXf label = Eigen::VectorXf::Zero(10);
+        Eigen::VectorXf image(784);
 
         std::replace(line.begin(), line.end(), ',', ' ');
         std::istringstream line_stream(line);
 
         int lab;
         line_stream >> lab;
-        label(lab, 0) = 1.0f;
+        label(lab) = 1.0f;
 
-        for (int i = 0; i < 784; i++) {
+        for (int j = 0; j < 784; j++) {
             float pixel = 0;
             line_stream >> pixel;
             pixel /= 255;
-            image(i, 0) = pixel;
+            image(j) = pixel;
         }
-
-        
 
         images.push_back(image);
         labels.push_back(label);
     }
     std::cout << images.size() << ", " << labels.size() << "\n";
-    return DataSet{images, labels};
+    return DataSet::from_samples(images, labels);
 }
 
 
@@ -62,9 +62,12 @@ int main() {
     DataSet fashion_test_data = read_data("MNIST/Fashion-MNIST/test.csv");
     DataSet fashion_train_data = read_data("MNIST/Fashion-MNIST/train.csv");
 
-    test_data.write("MNIST/MNIST/bin/test.dat");
-    train_data.write("MNIST/MNIST/bin/train.dat");
+    std::filesystem::create_directories("MNIST/bin");
+    std::filesystem::create_directories("MNIST/Fashion-MNIST/bin");
 
-    fashion_test_data.write("MNIST/Fashion-MNIST/bin/test.dat");
-    fashion_train_data.write("MNIST/Fashion-MNIST/bin/train.dat");
+    test_data.write_to_file("MNIST/bin/test.dat");
+    train_data.write_to_file("MNIST/bin/train.dat");
+
+    fashion_test_data.write_to_file("MNIST/Fashion-MNIST/bin/test.dat");
+    fashion_train_data.write_to_file("MNIST/Fashion-MNIST/bin/train.dat");
 }

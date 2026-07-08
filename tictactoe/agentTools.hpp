@@ -134,12 +134,13 @@ template <int N, int W, Agent<N, W> A1, Agent<N, W> A2>
 inputs gets board states appended to it
 targets gets board state evaluation from a1 appended to it
 */
-DataSet get_training_data(A1 a1, A2 a2, int num_games = 1000, bool quiet = true) {
+DataSet get_training_data(A1& a1, A2& a2, int num_games = 1000, bool quiet = true) {
     TicTacToe<N, W> game;
 
     BoardSquare a1_piece = BoardSquare::X;
 
-    DataSet training_data{};
+    std::vector<Eigen::VectorXf> inputs;
+    std::vector<Eigen::VectorXf> labels;
 
     for (int g = 0; g < num_games; g++) {
         game.restart();
@@ -154,16 +155,16 @@ DataSet get_training_data(A1 a1, A2 a2, int num_games = 1000, bool quiet = true)
             else move = a2.get_move(game);
             game.play_move(move);
 
-            training_data.inputs.push_back(game.get_board_state());
-            Eigen::MatrixXf target(1, 1);
-            target(0, 0) = a1.get_eval(game);
+            inputs.push_back(game.get_board_state());
+            Eigen::VectorXf target(1);
+            target(0) = a1.get_eval(game);
             if (game.next_player == BoardSquare::O) target *= -1;
-            training_data.labels.push_back(target);
+            labels.push_back(target);
 
             BoardSquare winner = game.check_winner(move);
             if (winner != BoardSquare::EMPTY) break;
         }
     }
 
-    return training_data;
+    return DataSet::from_samples(inputs, labels);
 }

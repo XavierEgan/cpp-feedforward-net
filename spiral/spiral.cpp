@@ -4,7 +4,6 @@ clang++ -std=c++23 -O3 -march=native ./spiral/spiral.cpp -o spiral_demo && ./spi
 
 #include "../DataSet.hpp"
 #include "../AdamOptimiser.hpp"
-#include "../NN_Utils.hpp"
 
 #include <cmath>
 #include <random>
@@ -44,7 +43,9 @@ overlap a little near the centre
 
 inputs are 2x1 (x, y) in roughly [-1, 1], labels are one-hot NUM_CLASSES x 1
 */
-void generate_spiral(DataSet& train_data, DataSet& test_data, float noise, unsigned int seed) {
+void generate_spiral(std::vector<Eigen::VectorXf>& train_inputs, std::vector<Eigen::VectorXf>& train_labels,
+                      std::vector<Eigen::VectorXf>& test_inputs, std::vector<Eigen::VectorXf>& test_labels,
+                      float noise, unsigned int seed) {
     std::mt19937 rng(seed);
     std::normal_distribution<float> angle_noise(0.0f, noise);
     std::uniform_real_distribution<float> unit(0.0f, 1.0f);
@@ -57,19 +58,19 @@ void generate_spiral(DataSet& train_data, DataSet& test_data, float noise, unsig
             // each arm is offset by an equal share of the full turn
             const float t = r * 4.0f + (static_cast<float>(c) / NUM_CLASSES) * 2.0f * static_cast<float>(M_PI) + angle_noise(rng);
 
-            Eigen::MatrixXf input(2, 1);
-            input(0, 0) = r * std::sin(t);
-            input(1, 0) = r * std::cos(t);
+            Eigen::VectorXf input(2);
+            input(0) = r * std::sin(t);
+            input(1) = r * std::cos(t);
 
-            Eigen::MatrixXf label = Eigen::MatrixXf::Zero(NUM_CLASSES, 1);
-            label(c, 0) = 1.0f;
+            Eigen::VectorXf label = Eigen::VectorXf::Zero(NUM_CLASSES);
+            label(c) = 1.0f;
 
             if (unit(rng) < TEST_SPLIT) {
-                test_data.inputs.push_back(input);
-                test_data.labels.push_back(label);
+                test_inputs.push_back(input);
+                test_labels.push_back(label);
             } else {
-                train_data.inputs.push_back(input);
-                train_data.labels.push_back(label);
+                train_inputs.push_back(input);
+                train_labels.push_back(label);
             }
         }
     }
@@ -79,14 +80,11 @@ float eval_accuracy(const DataSet& data, const FFNN& ffnn) {
     int total_right = 0;
 
     // get all predictions in one forward pass
-    Eigen::MatrixXf inputs;
-    Eigen::MatrixXf targets;
-    nn_utils::get_random_batch(data.inputs, data.labels, inputs, targets, -1);
-    const auto predictions = ffnn.forward(inputs);
+    const auto predictions = ffnn.forward(data.inputs);
 
-    for (Eigen::Index i = 0; i < inputs.cols(); i++) {
+    for (Eigen::Index i = 0; i < data.inputs.cols(); i++) {
         Eigen::Index answer = 0, answer_col = 0;
-        targets.col(i).maxCoeff(&answer, &answer_col);
+        data.labels.col(i).maxCoeff(&answer, &answer_col);
 
         Eigen::Index prediction = 0, prediction_col = 0;
         predictions.col(i).maxCoeff(&prediction, &prediction_col);
@@ -94,7 +92,7 @@ float eval_accuracy(const DataSet& data, const FFNN& ffnn) {
         if (answer == prediction) total_right++;
     }
 
-    return static_cast<float>(total_right) / static_cast<float>(inputs.cols());
+    return static_cast<float>(total_right) / static_cast<float>(data.size());
 }
 
 /*
@@ -151,14 +149,17 @@ int main() {
     srand(settings.seed);
 
     // generate the dataset in-memory, no files needed
-    DataSet train_dataset;
-    DataSet test_dataset;
-    generate_spiral(train_dataset, test_dataset, settings.spiral_noise, settings.seed);
+    std::vector<Eigen::VectorXf> train_inputs, train_labels, test_inputs, test_labels;
+    generate_spiral(train_inputs, train_labels, test_inputs, test_labels, settings.spiral_noise, settings.seed);
 
-    std::cout << "train samples: " << train_dataset.inputs.size() << " | test samples: " << test_dataset.inputs.size() << "\n";
+    DataSet train_dataset = DataSet::from_samples(train_inputs, train_labels);
+    DataSet test_dataset = DataSet::from_samples(test_inputs, test_labels);
+
+    std::cout << "train samples: " << train_dataset.size() << " | test samples: " << test_dataset.size() << "\n";
 
     FFNN ffnn = FFNN::from_random_he_scaling(settings.ffnn_shape, settings.ffnn_funcs);
     AdamOptimiser optimiser = AdamOptimiser::from_ffnn(ffnn, settings.cost_type, settings.lr, settings.reg_type);
+    Batcher batcher = Batcher::from_dataset(train_dataset, settings.seed);
 
     Eigen::MatrixXf inputs;
     Eigen::MatrixXf targets;
@@ -167,7 +168,7 @@ int main() {
     int best_test_epoch = 0;
 
     for (auto epoch{0uz}; epoch < settings.num_epochs; epoch++) {
-        nn_utils::get_random_batch(train_dataset.inputs, train_dataset.labels, inputs, targets, settings.batch_size, settings.seed);
+        batcher.next_batch(settings.batch_size, inputs, targets);
 
         float cost = optimiser.step(inputs, targets);
 
