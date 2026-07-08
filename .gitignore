@@ -1,6 +1,12 @@
+// ignore anything without a dot
+*
+!*/
+!*.*
+
 *.dSYM
 *.exe
 test
 .DS_Store
 *.dat
 *.csv
+

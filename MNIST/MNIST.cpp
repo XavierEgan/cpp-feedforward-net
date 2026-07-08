@@ -1,24 +1,11 @@
-// g++ -std=c++23 -O3 -o test ./MNIST/MNIST.cpp && ./test
-// del test.exe && g++ -std=c++23 -fopenmp -O3 -o test ./MNIST/MNIST.cpp && test.exe
-
-//g++ -std=c++23 -march=native -fopenmp -O0 -ggdb -fno-omit-frame-pointer -o test ./MNIST/MNIST.cpp && lldb test.exe
-
-// compile command on mac for multithreading:
 /*
 clang++ -std=c++23 -O3 -march=native -Xpreprocessor -fopenmp -I"$(brew --prefix libomp)/include" ./MNIST/MNIST.cpp -L"$(brew --prefix libomp)/lib" -lomp -o test && ./test
 */
 
+#include "../DataSet.hpp"
 #include "../AdamOptimiser.hpp"
-#include "../RegularizationType.hpp"
-#include "../LrSchedulers.hpp"
-
-#include <fstream>
-#include <cmath>
-#include <chrono>
-#include <sstream>
-#include <algorithm>
-#include <thread>
-#include <iomanip>
+#include <string>
+#include <filesystem>
 
 constexpr int IMG_SIZE = 784;
 constexpr int NUM_CLASSES = 10;
@@ -28,161 +15,146 @@ constexpr int TEST_SIZE = 10000;
 constexpr int DEBUG_PRINT_INTERVAL = 100;
 constexpr int EVAL_PRINT_INTERVAL = 1000;
 
-
-struct Dataset {
-    std::vector<Eigen::MatrixXf> images;
-    std::vector<Eigen::MatrixXf> labels;
-};
-
 struct Settings {
-    int batch_size = 256;
-    int seed = 0;
-    RegularizationType regularization_type = RegularizationType::none;
-    nn_utils::LRSchedulerExponential lr_scheduler = nn_utils::LRSchedulerExponential::from_num_generation(1e-2, 1e-3, 30000);
-    std::vector<size_t> layer_sizes =               {IMG_SIZE, 512, 256, 128, 64, 32, NUM_CLASSES};
-    std::vector<ActivationFunc> activation_funcs =  {relu, relu, relu, relu, relu, softmax};
+    std::vector<size_t> ffnn_shape;
+    std::vector<ActivationFunc> ffnn_funcs;
+    CostType cost_type;
+    RegularizationType reg_type;
+
+    size_t num_epochs;
+    int seed;
+    size_t batch_size;
+    double lr;
+    float noise;
+    float chance_for_noise;
 };
 
-Dataset read_data(const std::string& data_loc) {
-    std::ifstream data_file(data_loc);
-
-    if (!data_file) {
-        std::cout << "failed to read file" << std::endl;
-        throw std::runtime_error("read_data: failed to read file: " + data_loc);
-    }
-
-    std::string line;
-
-    std::vector<Eigen::MatrixXf> images;
-    std::vector<Eigen::MatrixXf> labels;
-    images.reserve(TRAIN_SIZE);
-    labels.reserve(TRAIN_SIZE);
-
-    std::getline(data_file, line); // remvoe the header line
-
-    int i = 0;
-
-    while (std::getline(data_file, line)) {
-        if (i  % DEBUG_PRINT_INTERVAL == 0) {
-            std::cout << "Reading line " << i << " From file " << data_loc << std::endl;
-        }
-        i++;
-
-        Eigen::MatrixXf label = Eigen::MatrixXf::Zero(NUM_CLASSES, 1);
-        Eigen::MatrixXf image(IMG_SIZE, 1);
-
-        std::replace(line.begin(), line.end(), ',', ' ');
-        std::istringstream line_stream(line);
-
-        int lab;
-        line_stream >> lab;
-        label(lab, 0) = 1.0f;
-
-        for (int i = 0; i < IMG_SIZE; i++) {
-            float pixel = 0;
-            line_stream >> pixel;
-            pixel /= 255;
-            image(i, 0) = pixel;
-        }
-
-        images.push_back(image);
-        labels.push_back(label);
-    }
-
-    images.shrink_to_fit();
-    labels.shrink_to_fit();
-
-    return Dataset{images, labels};
-}
-
-#if defined(__i386__) || defined(__x86_64__)
-#include <immintrin.h>
-#endif
-
-void eval_on_test(Dataset& test_data, FFNN& ffnn) {
+float eval_on_test(DataSet& test_data, FFNN& ffnn, bool quiet = true) {
     int total_right = 0;
-    for (int d = 0; d < (int)test_data.images.size(); d++) {
-        // ground-truth = argmax(label)
-        Eigen::Index gt_r = 0, gt_c = 0;
-        test_data.labels[d].maxCoeff(&gt_r, &gt_c);
-        const Eigen::Index gt = gt_r;
 
-        // prediction = argmax(output)
-        auto res = ffnn.forward(test_data.images[d]);
-        Eigen::Index pred_r = 0, pred_c = 0;
-        res.maxCoeff(&pred_r, &pred_c);
-        const Eigen::Index pred = pred_r;
+    // get all predictions
+    Eigen::MatrixXf inputs;
+    Eigen::MatrixXf targets;
+    nn_utils::get_random_batch(test_data.inputs, test_data.labels, inputs, targets, -1);
+    const auto predictions = ffnn.forward(inputs);
 
-        if (pred == gt) total_right++;
+    for (int i = 0; i < inputs.cols(); i++) {
+        // answer
+        Eigen::Index answer = 0, answer_col = 0;
+        targets.col(i).maxCoeff(&answer, &answer_col);
+
+        // prediction
+        Eigen::Index prediction = 0, prediction_col = 0;
+        predictions.col(i).maxCoeff(&prediction, &prediction_col);
+
+        if (answer == prediction) total_right ++;
     }
 
-    std::cout << "Total test correct: " << total_right << " Percentage right: " << (static_cast<float>(total_right) / static_cast<float>(test_data.images.size())) * 100.0f << "%" << std::endl;
+    if (!quiet)
+        std::cout << "Total test correct: " << total_right << " Percentage right: " << (static_cast<float>(total_right) / static_cast<float>(test_data.inputs.size())) * 100.0f << "%" << std::endl;
+
+    return static_cast<float>(total_right) / static_cast<float>(test_data.inputs.size());
 }
 
 int main() {
-    // subnormal floats are like 2.5x slower or so from testing, so we just turn them off
-    #if defined(__i386__) || defined(__x86_64__)
-    _MM_SET_FLUSH_ZERO_MODE(_MM_FLUSH_ZERO_ON);
-    _MM_SET_DENORMALS_ZERO_MODE(_MM_DENORMALS_ZERO_ON);
-    #endif
+    Settings settings{
+        .ffnn_shape = {IMG_SIZE, 1024, 512, 255, 128, 64, 32, 16, NUM_CLASSES},
+        .ffnn_funcs = {ActivationFunc::relu, ActivationFunc::relu, ActivationFunc::relu, ActivationFunc::relu, ActivationFunc::relu, ActivationFunc::relu, ActivationFunc::relu, ActivationFunc::softmax},
+        .cost_type = CostType::categorical_cross_entropy,
+        .reg_type = RegularizationType::none,
+        .num_epochs = 1000000,
+        .seed = 1,
+        .batch_size = 1000,
+        .lr = 0.0005,
+        .noise = 1,
+        .chance_for_noise = 0.5
+    };
 
-    Settings settings;
-    std::srand(settings.seed);
+    srand(settings.seed);
 
-    Eigen::setNbThreads(std::thread::hardware_concurrency());
-    std::cout << "num htreads: " << Eigen::nbThreads() << std::endl;
+    DataSet test_dataset = DataSet();
+    test_dataset.load("MNIST/bin/test.dat");
 
-    Dataset train_data = read_data("MNIST/MNIST/train.csv");
-    Dataset test_data = read_data("MNIST/MNIST/test.csv");
+    DataSet train_dataset = DataSet();
+    train_dataset.load("MNIST/bin/train.dat");
 
-    FFNN ffnn = FFNN::from_random_he_scaling(
-        settings.layer_sizes,
-        settings.activation_funcs,
-        settings.regularization_type
-    );
-    AdamOptimiser optimiser(ffnn, CostType::categorical_cross_entropy);
-    
-    Eigen::MatrixXf minibatch;
-    Eigen::MatrixXf minibatch_target;
+    FFNN ffnn = FFNN::from_random_he_scaling(settings.ffnn_shape, settings.ffnn_funcs, settings.reg_type);
 
-    int gen = 0;
-    while (!settings.lr_scheduler.is_done()) {
-        auto start_time = std::chrono::high_resolution_clock::now();
+    AdamOptimiser optimiser(ffnn, settings.cost_type, settings.lr);
+    Eigen::MatrixXf inputs;
+    Eigen::MatrixXf targets;
 
-        nn_utils::get_random_batch(train_data.images, train_data.labels, minibatch, minibatch_target, settings.batch_size, settings.seed);
+    float best_test_score = std::numeric_limits<float>::min();
+    int best_test_epoch = 0;
 
-        optimiser.lr = settings.lr_scheduler.lr;
-        float avg_cost = optimiser.step(minibatch, minibatch_target);
-        settings.lr_scheduler.step();
+    for (auto epoch{0uz}; epoch < settings.num_epochs; epoch++) {
+        nn_utils::get_random_batch(train_dataset.inputs, train_dataset.labels, inputs, targets, settings.batch_size, settings.seed);
 
-        auto end_time = std::chrono::high_resolution_clock::now();
-        std::chrono::duration<double> elapsed = end_time - start_time;
-        if (gen % DEBUG_PRINT_INTERVAL == 0) {
-            std::cout << "Generation " << std::fixed << std::setprecision(6) << gen << "  Avg Cost: " << avg_cost << "  Generation Time: " << elapsed.count() << " seconds " << "  Learning Rate: " << optimiser.lr << std::endl;
-        }
-        if (gen % EVAL_PRINT_INTERVAL == 0) {
-            ffnn.write_to_file("mnist_ffnn_" + std::to_string(gen) + ".dat");
-            eval_on_test(test_data, ffnn);
+        for (Eigen::Index j = 0; j < inputs.cols(); j++) {
+            if (static_cast<double>(rand()) / RAND_MAX < settings.chance_for_noise) {
+                auto a = (Eigen::MatrixXf::Random(inputs.rows(), 1).array() + 1).matrix() * (settings.noise / 2.0f);
+                inputs.col(j) += a;
+            }
         }
 
-        gen++;
+        // if (static_cast<double>(rand()) / RAND_MAX < settings.chance_for_noise)
+        //     inputs += (Eigen::MatrixXf::Random(inputs.rows(), inputs.cols()).array() + 1).matrix() * settings.noise;
+
+        float cost = optimiser.step(inputs, targets);
+
+        if (epoch % EVAL_PRINT_INTERVAL == 0) {
+            float test_score = eval_on_test(test_dataset, ffnn, false);
+            if (test_score > best_test_score) {
+                best_test_score = test_score;
+                best_test_epoch = epoch;
+            }
+        }
+
+        std::cout << "Epoch " << epoch + 1 << "/" << settings.num_epochs << " | Cost " << cost << " | Best Test Score " << best_test_score * 100 << "%" << " at " << best_test_epoch << "\n";
     }
 
-    eval_on_test(test_data, ffnn);
-
-    ffnn.write_to_file("mnist_ffnn_final.dat");
+    eval_on_test(test_dataset, ffnn);
+    
+    return 0;
 }
-
 /*
-98.61%
-FFNN ffnn = FFNN::from_random(
-    {784, 512, 256, 128, 64, 32, 10},
-    {ActivationFunc::relu, ActivationFunc::relu, ActivationFunc::relu, ActivationFunc::relu, ActivationFunc::relu, ActivationFunc::sigmoid},
-    CostType::binary_cross_entropy
-);
-DecayOnPlateauScheduler scheduler(0.5, 0.001, 0.99, 30);
-batch size = 250
-*/
-/*
+99.04% at 159000
+Settings settings{
+        .ffnn_shape = {IMG_SIZE, 1024, 512, 255, 128, 64, 32, 16, NUM_CLASSES},
+        .ffnn_funcs = {ActivationFunc::relu, ActivationFunc::relu, ActivationFunc::relu, ActivationFunc::relu, ActivationFunc::relu, ActivationFunc::relu, ActivationFunc::relu, ActivationFunc::softmax},
+        .cost_type = CostType::categorical_cross_entropy,
+        .reg_type = RegularizationType::none,
+        .num_epochs = 1000000,
+        .seed = 1,
+        .batch_size = 1000,
+        .lr = 0.0005,
+        .noise = 1,
+        .chance_for_noise = 0.5
+    };
 
+98.88%
+Settings settings{
+        .ffnn_shape = {IMG_SIZE, 1024, 512, 255, 128, 64, 32, 16, NUM_CLASSES},
+        .ffnn_funcs = {ActivationFunc::relu, ActivationFunc::relu, ActivationFunc::relu, ActivationFunc::relu, ActivationFunc::relu, ActivationFunc::relu, ActivationFunc::relu, ActivationFunc::sigmoid},
+        .cost_type = CostType::binary_cross_entropy,
+        .reg_type = RegularizationType::none,
+        .num_epochs = 10000,
+        .seed = 1,
+        .batch_size = 1000,
+        .lr = 0.0005,
+        .noise = 1,
+        .chance_for_noise = 0.5
+    };
+
+98.09% - went to 5k generations
+Settings settings{
+    .ffnn_shape = {IMG_SIZE, 512, 255, 128, 64, 32, 16, NUM_CLASSES},
+    .ffnn_funcs = {ActivationFunc::relu, ActivationFunc::relu, ActivationFunc::relu, ActivationFunc::relu, ActivationFunc::relu, ActivationFunc::relu, ActivationFunc::sigmoid},
+    .cost_type = ::binary_cross_entropy,
+    .reg_type = RegularizationType::none,
+    .num_epochs = 10000,
+    .seed = 1,
+    .batch_size = 1000,
+    .lr = 0.0005
+};
 */
