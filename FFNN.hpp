@@ -12,6 +12,7 @@
 #include <numeric>
 #include <iostream>
 #include <fstream>
+#include <cstdint>
 
 // holds only the trained parameters of a feedforward network
 // forward/backward are const and write into a caller-owned workspace, so a single FFNN can be
@@ -61,13 +62,26 @@ struct FFNN {
             throw std::runtime_error("from_file: could not open file " + filename);
         }
 
+        char magic[4];
+        file.read(magic, 4);
+        if (!file || magic[0] != 'F' || magic[1] != 'F' || magic[2] != 'N' || magic[3] != 'N') {
+            throw std::runtime_error("from_file: not a valid FFNN file: " + filename);
+        }
+
+        uint32_t version;
+        file.read(reinterpret_cast<char*>(&version), sizeof(version));
+        if (version != 2) {
+            throw std::runtime_error("from_file: unsupported FFNN version in " + filename);
+        }
+
         // read len of network_shape
-        size_t network_shape_len;
-        file.read(reinterpret_cast<char*>(&network_shape_len), sizeof(size_t));
+        uint32_t network_shape_len;
+        file.read(reinterpret_cast<char*>(&network_shape_len), sizeof(network_shape_len));
 
         // read network_shape
-        std::vector<size_t> network_shape(network_shape_len);
-        file.read(reinterpret_cast<char*>(network_shape.data()), network_shape_len * sizeof(size_t));
+        std::vector<uint32_t> raw_shape(network_shape_len);
+        file.read(reinterpret_cast<char*>(raw_shape.data()), network_shape_len * sizeof(uint32_t));
+        std::vector<size_t> network_shape(raw_shape.begin(), raw_shape.end());
 
         // read activation functions
         std::vector<ActivationFunc> activation_funcs(network_shape_len - 1);
@@ -86,6 +100,8 @@ struct FFNN {
             ffnn.weights.push_back(weight);
             ffnn.biases.push_back(bias);
         }
+
+        if (!file) throw std::runtime_error("from_file: read failed: " + filename);
 
         return ffnn;
     }
@@ -160,28 +176,32 @@ struct FFNN {
 
     void write_to_file(const std::string& filename) const {
         // file format (in binary):
-        // length of network_shape
-        // input_size layer1_size layer2_size ... layerN_size
+        // magic "FFNN"
+        // uint32 version
+        // uint32 length of network_shape
+        // uint32 input_size layer1_size layer2_size ... layerN_size
         // activation_func1 activation_func2 ... activation_funcN-1
-        // weight matrix 1 (row major, values separated by spaces)
-        // bias vector 1 (values separated by spaces)
-        // weight matrix 2
-        // bias vector 2
+        // weight matrix 1 (column-major), bias vector 1
+        // weight matrix 2, bias vector 2
         // ...
-        // weight matrix N-1
-        // bias vector N-1
+        // weight matrix N-1, bias vector N-1
 
         std::ofstream file(filename, std::ios::binary);
         if (!file.is_open()) {
             throw std::runtime_error("write_to_file: could not open file");
         }
 
-        // write text length of network_shape
-        size_t network_shape_len = network_shape.size();
-        file.write(reinterpret_cast<const char*>(&network_shape_len), sizeof(size_t));
+        file.write("FFNN", 4);
+
+        const uint32_t version = 2;
+        file.write(reinterpret_cast<const char*>(&version), sizeof(version));
+
+        const uint32_t network_shape_len = static_cast<uint32_t>(network_shape.size());
+        file.write(reinterpret_cast<const char*>(&network_shape_len), sizeof(network_shape_len));
 
         // write layer sizes
-        file.write(reinterpret_cast<const char*>(network_shape.data()), network_shape.size() * sizeof(size_t));
+        std::vector<uint32_t> raw_shape(network_shape.begin(), network_shape.end());
+        file.write(reinterpret_cast<const char*>(raw_shape.data()), raw_shape.size() * sizeof(uint32_t));
 
         // write activation functions
         file.write(reinterpret_cast<const char*>(activation_functions.data()), activation_functions.size() * sizeof(ActivationFunc));
@@ -194,6 +214,8 @@ struct FFNN {
             file.write(reinterpret_cast<const char*>(weight.data()), weight.size() * sizeof(float));
             file.write(reinterpret_cast<const char*>(bias.data()), bias.size() * sizeof(float));
         }
+
+        if (!file) throw std::runtime_error("write_to_file: write failed: " + filename);
     }
 
     // gets the weight matrix connecting l-1 to l
