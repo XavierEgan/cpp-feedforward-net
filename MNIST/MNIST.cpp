@@ -73,10 +73,10 @@ int main() {
     srand(settings.seed);
 
     DataSet test_dataset = DataSet();
-    test_dataset.load("MNIST/MNIST/bin/test.dat");
+    test_dataset.load("MNIST/bin/test.dat");
 
     DataSet train_dataset = DataSet();
-    train_dataset.load("MNIST/MNIST/bin/train.dat");
+    train_dataset.load("MNIST/bin/train.dat");
 
     FFNN ffnn = FFNN::from_random_he_scaling(settings.ffnn_shape, settings.ffnn_funcs, settings.reg_type);
 
@@ -157,27 +157,4 @@ Settings settings{
     .batch_size = 1000,
     .lr = 0.0005
 };
-
-
-96.94%
-Settings settings{
-        {IMG_SIZE, 32, 16, NUM_CLASSES},
-        {ActivationFunc::relu, ActivationFunc::relu, ActivationFunc::softmax},
-        CostType::categorical_cross_entropy,
-        RegularizationType::l2,
-        10000,
-        1,
-        1000
-    };
-
-97.88%
-Settings settings{
-        {IMG_SIZE, 256, 128, 64, 32, 16, NUM_CLASSES},
-        {ActivationFunc::relu, ActivationFunc::relu, ActivationFunc::relu, ActivationFunc::relu, ActivationFunc::relu, ActivationFunc::softmax},
-        CostType::categorical_cross_entropy,
-        RegularizationType::l2,
-        10000,
-        1,
-        1000
-    };
 */
