@@ -1,5 +1,8 @@
+#pragma once
+
 #include <cmath>
 #include <algorithm>
+#include <limits>
 #include <stdexcept>
 
 namespace nn_utils {

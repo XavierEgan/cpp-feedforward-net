@@ -17,19 +17,19 @@ std::string get_matrix_shape_str(const T& m) {
     return "(" + std::to_string(m.rows()) + ", " + std::to_string(m.cols()) + ")";
 }
 
-void check_layer_in_range(int l, int depth) {
+inline void check_layer_in_range(int l, int depth) {
     if (l < 1 || l >= depth) {
         throw std::out_of_range("get_z: l is out of range: " + std::to_string(l));
     }
 }
 
-void check_matrix_shape(const Eigen::MatrixXf& m, int rows, int cols, const std::string& name) {
+inline void check_matrix_shape(const Eigen::MatrixXf& m, int rows, int cols, const std::string& name) {
     if (m.rows() != rows || m.cols() != cols) {
         throw std::invalid_argument(name + " has incorrect shape. Expected (" + std::to_string(rows) + ", " + std::to_string(cols) + "), got " + get_matrix_shape_str(m));
     }
 }
 
-void get_random_batch(const std::vector<Eigen::MatrixXf>& inputs, const std::vector<Eigen::MatrixXf>& targets, Eigen::MatrixXf& minibatch, Eigen::MatrixXf& minibatch_targets, int batch_size = -1, unsigned int seed = std::random_device{}()) {
+inline void get_random_batch(const std::vector<Eigen::MatrixXf>& inputs, const std::vector<Eigen::MatrixXf>& targets, Eigen::MatrixXf& minibatch, Eigen::MatrixXf& minibatch_targets, int batch_size = -1, unsigned int seed = std::random_device{}()) {
     if (inputs.size() != targets.size()) {
         throw std::invalid_argument("get_random_batch: inputs and targets must be the same size");
     }

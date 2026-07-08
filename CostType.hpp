@@ -1,26 +1,28 @@
 #pragma once
 #include "Eigen/Dense"
 #include "NN_Utils.hpp"
+
+#include <cstdint>
 #include <stdexcept>
 
-enum CostType {
-    quadratic,
+enum class CostType : uint32_t {
+    mse,
     binary_cross_entropy,
     categorical_cross_entropy
 };
 
 namespace nn_utils {
-float cost(const Eigen::MatrixXf& a, const Eigen::MatrixXf& y, CostType cost_type) {
-    //std::cout << a << std::endl << std::endl;
+
+inline float cost(const Eigen::MatrixXf& a, const Eigen::MatrixXf& y, CostType cost_type) {
     switch (cost_type) {
-        case quadratic: {
+        case CostType::mse: {
             return ((a - y).cwiseSquare() * 0.5).sum() / (a.rows() * a.cols());
         }
-        case binary_cross_entropy: {
+        case CostType::binary_cross_entropy: {
             Eigen::ArrayXXf ac = a.array().min(1.0f - k_prob_eps).max(k_prob_eps);
             return (-(y.array() * ac.log()) - (1.0f - y.array()) * (1.0f - ac).log()).sum() / (a.rows() * a.cols());
         }
-        case categorical_cross_entropy: {
+        case CostType::categorical_cross_entropy: {
             Eigen::ArrayXXf ac = a.array().min(1.0f - k_prob_eps).max(k_prob_eps);
             return (-(y.array() * ac.log())).sum() / (a.rows() * a.cols());
         }
@@ -29,11 +31,11 @@ float cost(const Eigen::MatrixXf& a, const Eigen::MatrixXf& y, CostType cost_typ
     }
 }
 
-Eigen::MatrixXf cost_derivative(const Eigen::MatrixXf& a, const Eigen::MatrixXf& y, CostType cost_type) {
+inline Eigen::MatrixXf cost_derivative(const Eigen::MatrixXf& a, const Eigen::MatrixXf& y, CostType cost_type) {
     switch (cost_type) {
-        case quadratic:
+        case CostType::mse:
             return a - y;
-        case binary_cross_entropy: {
+        case CostType::binary_cross_entropy: {
             Eigen::ArrayXXf ac = a.array().min(1.0f - k_prob_eps).max(k_prob_eps);
             return (-(y.array() / ac) + (1.0f - y.array()) / (1.0f - ac)).matrix();
         }
