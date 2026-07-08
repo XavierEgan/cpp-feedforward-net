@@ -13,18 +13,21 @@ enum class CostType : uint32_t {
 
 namespace nn_utils {
 
+// sums the per-sample loss over the output dimension (rows) and averages over the batch
+// (cols) only, so this matches the gradients computed by FFNN::backward, which normalize
+// by batch size alone
 inline float cost(const Eigen::MatrixXf& a, const Eigen::MatrixXf& y, CostType cost_type) {
     switch (cost_type) {
         case CostType::mse: {
-            return ((a - y).cwiseSquare() * 0.5).sum() / (a.rows() * a.cols());
+            return ((a - y).cwiseSquare() * 0.5).sum() / a.cols();
         }
         case CostType::binary_cross_entropy: {
             Eigen::ArrayXXf ac = a.array().min(1.0f - k_prob_eps).max(k_prob_eps);
-            return (-(y.array() * ac.log()) - (1.0f - y.array()) * (1.0f - ac).log()).sum() / (a.rows() * a.cols());
+            return (-(y.array() * ac.log()) - (1.0f - y.array()) * (1.0f - ac).log()).sum() / a.cols();
         }
         case CostType::categorical_cross_entropy: {
             Eigen::ArrayXXf ac = a.array().min(1.0f - k_prob_eps).max(k_prob_eps);
-            return (-(y.array() * ac.log())).sum() / (a.rows() * a.cols());
+            return (-(y.array() * ac.log())).sum() / a.cols();
         }
         default:
             throw std::invalid_argument("cost: unknown cost type");

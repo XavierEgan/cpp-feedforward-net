@@ -12,8 +12,8 @@ int main() {
     FFNN ffnn_gd = FFNN::from_random_he_scaling(layer_sizes, activation_funcs);
     FFNN ffnn_adam = FFNN::from_random_he_scaling(layer_sizes, activation_funcs);
 
-    GradientDescentOptimiser gd_optimiser(ffnn_gd, CostType::mse, 0.05);
-    AdamOptimiser adam_optimiser(ffnn_adam, CostType::mse, 5e-3);
+    GradientDescentOptimiser gd_optimiser = GradientDescentOptimiser::from_ffnn(ffnn_gd, CostType::mse, 0.05f);
+    AdamOptimiser adam_optimiser = AdamOptimiser::from_ffnn(ffnn_adam, CostType::mse, 5e-3f);
 
     Eigen::MatrixXf input = (Eigen::MatrixXf::Random(128, 128) + Eigen::MatrixXf::Constant(128, 128, 1.0f)) / 2.0f;
     Eigen::MatrixXf target = (Eigen::MatrixXf::Random(128, 128) + Eigen::MatrixXf::Constant(128, 128, 1.0f)) / 2.0f;

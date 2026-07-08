@@ -29,7 +29,7 @@ struct Settings {
     float chance_for_noise;
 };
 
-float eval_on_test(DataSet& test_data, FFNN& ffnn, bool quiet = true) {
+float eval_on_test(const DataSet& test_data, const FFNN& ffnn, bool quiet = true) {
     int total_right = 0;
 
     // get all predictions
@@ -78,9 +78,9 @@ int main() {
     DataSet train_dataset = DataSet();
     train_dataset.load("MNIST/bin/train.dat");
 
-    FFNN ffnn = FFNN::from_random_he_scaling(settings.ffnn_shape, settings.ffnn_funcs, settings.reg_type);
+    FFNN ffnn = FFNN::from_random_he_scaling(settings.ffnn_shape, settings.ffnn_funcs);
 
-    AdamOptimiser optimiser(ffnn, settings.cost_type, settings.lr);
+    AdamOptimiser optimiser = AdamOptimiser::from_ffnn(ffnn, settings.cost_type, settings.lr, settings.reg_type);
     Eigen::MatrixXf inputs;
     Eigen::MatrixXf targets;
 

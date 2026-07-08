@@ -3,6 +3,7 @@
 #include "../enums.hpp"
 #include "../TranspositionTable.hpp"
 #include "../../FFNN.hpp"
+#include "../../Workspace.hpp"
 
 #include <concepts>
 #include <array>
@@ -17,10 +18,11 @@ struct FFNNAgent {
     std::chrono::duration<double, std::milli> max_move_time;
     std::string name;
     FFNN ffnn;
+    ForwardWorkspace ws;   // reused across evals, allocation-free after the first call
 
-    FFNNAgent(FFNN ffnn) : max_move_time(1), name("Unnamed FFNNAgent"), ffnn(ffnn) {}
-    FFNNAgent(double max_move_time, FFNN ffnn) : max_move_time(max_move_time), name("Unnamed FFNNAgent"), ffnn(ffnn) {}
-    FFNNAgent(double max_move_time, std::string name, FFNN ffnn)  : max_move_time(max_move_time), name(name), ffnn(ffnn) {}
+    FFNNAgent(FFNN ffnn) : max_move_time(1), name("Unnamed FFNNAgent"), ffnn(ffnn), ws(ForwardWorkspace::from_shape(ffnn.network_shape)) {}
+    FFNNAgent(double max_move_time, FFNN ffnn) : max_move_time(max_move_time), name("Unnamed FFNNAgent"), ffnn(ffnn), ws(ForwardWorkspace::from_shape(ffnn.network_shape)) {}
+    FFNNAgent(double max_move_time, std::string name, FFNN ffnn)  : max_move_time(max_move_time), name(name), ffnn(ffnn), ws(ForwardWorkspace::from_shape(ffnn.network_shape)) {}
 
     float get_eval(TicTacToe<N, W>& game) {
         // TODO: fix ts
@@ -176,7 +178,7 @@ private:
 
     float get_static_eval(TicTacToe<N, W>& game, int prev_move = -1) {
         // ffnn eval
-        return ffnn.forward(game.get_board_state())(0, 0);
+        return ffnn.forward(game.get_board_state(), ws)(0, 0);
     }
 
     float minimax(TicTacToe<N, W>& game, float alpha, float beta, int depth, std::chrono::steady_clock::time_point deadline, int prev_move = -1) {

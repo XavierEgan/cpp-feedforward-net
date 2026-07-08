@@ -75,7 +75,7 @@ void generate_spiral(DataSet& train_data, DataSet& test_data, float noise, unsig
     }
 }
 
-float eval_accuracy(DataSet& data, FFNN& ffnn) {
+float eval_accuracy(const DataSet& data, const FFNN& ffnn) {
     int total_right = 0;
 
     // get all predictions in one forward pass
@@ -104,7 +104,7 @@ builds a grid of points over [-1.1, 1.1]^2, runs them all through the
 network in a single forward pass, and prints one coloured character per
 cell based on the predicted class
 */
-void render_decision_boundary(FFNN& ffnn, int width = 60, int height = 30) {
+void render_decision_boundary(const FFNN& ffnn, int width = 60, int height = 30) {
     const float lo = -1.1f, hi = 1.1f;
 
     // one column per grid cell
@@ -157,8 +157,8 @@ int main() {
 
     std::cout << "train samples: " << train_dataset.inputs.size() << " | test samples: " << test_dataset.inputs.size() << "\n";
 
-    FFNN ffnn = FFNN::from_random_he_scaling(settings.ffnn_shape, settings.ffnn_funcs, settings.reg_type);
-    AdamOptimiser optimiser(ffnn, settings.cost_type, settings.lr);
+    FFNN ffnn = FFNN::from_random_he_scaling(settings.ffnn_shape, settings.ffnn_funcs);
+    AdamOptimiser optimiser = AdamOptimiser::from_ffnn(ffnn, settings.cost_type, settings.lr, settings.reg_type);
 
     Eigen::MatrixXf inputs;
     Eigen::MatrixXf targets;

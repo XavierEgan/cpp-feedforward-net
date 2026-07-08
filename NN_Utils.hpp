@@ -1,5 +1,7 @@
 #pragma once
 #include "Eigen/Dense"
+#include "RegularizationType.hpp"
+
 #include <vector>
 #include <string>
 #include <iomanip>
@@ -17,15 +19,13 @@ std::string get_matrix_shape_str(const T& m) {
     return "(" + std::to_string(m.rows()) + ", " + std::to_string(m.cols()) + ")";
 }
 
-inline void check_layer_in_range(int l, int depth) {
-    if (l < 1 || l >= depth) {
-        throw std::out_of_range("get_z: l is out of range: " + std::to_string(l));
-    }
-}
-
-inline void check_matrix_shape(const Eigen::MatrixXf& m, int rows, int cols, const std::string& name) {
-    if (m.rows() != rows || m.cols() != cols) {
-        throw std::invalid_argument(name + " has incorrect shape. Expected (" + std::to_string(rows) + ", " + std::to_string(cols) + "), got " + get_matrix_shape_str(m));
+// adds the regularization penalty to an already-averaged weight gradient (biases are never
+// regularized); not divided by batch size, matching the recorded hyperparameter history
+inline void add_regularization(Eigen::MatrixXf& grad, const Eigen::MatrixXf& weight, RegularizationType reg_type, float reg_lambda) {
+    if (reg_type == RegularizationType::l2) {
+        grad += reg_lambda * weight;
+    } else if (reg_type == RegularizationType::l1) {
+        grad += reg_lambda * weight.cwiseSign();
     }
 }
 
