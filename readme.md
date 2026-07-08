@@ -6,7 +6,7 @@ This repository is built for:
 
 - learning and experimenting with core neural-network training loops,
 - keeping the code easy to inspect and tweak,
-- and providing a few concrete example projects (toy benchmark, MNIST/Fashion-MNIST, tic-tac-toe scaffold).
+- and providing a few concrete example projects (toy benchmark, spiral classifier, MNIST/Fashion-MNIST, tic-tac-toe).
 
 The code is intentionally simple and header-driven, so the implementation is easy to read and modify.
 
@@ -21,10 +21,10 @@ The code is intentionally simple and header-driven, so the implementation is eas
 - [Build and Run](#build-and-run)
 - [Quick Start API Example](#quick-start-api-example)
 - [Included Example Projects](#included-example-projects)
-- [Model Saving and Loading](#model-saving-and-loading)
+- [Model and Dataset Files](#model-and-dataset-files)
+- [Running the Tests](#running-the-tests)
 - [Common Gotchas](#common-gotchas)
 - [Performance Tips](#performance-tips)
-- [Where to Extend Next](#where-to-extend-next)
 
 ---
 
@@ -40,18 +40,17 @@ You define:
 - optimizer,
 - and training loop behavior.
 
-The core `FFNN` type handles forward propagation, backpropagation, and parameter storage.
+The core `FFNN` type holds only the trained parameters (weights, biases, shape, activations).
+Forward and backward passes are `const` and write into a caller-owned `Workspace`, so a single
+`FFNN` can be evaluated repeatedly (or shared across threads) without reallocating.
 
-Optimizers then apply updates to weights/biases:
+Optimizers apply updates to weights/biases:
 
-- plain gradient descent,
-- Adam.
+- plain gradient descent (`GradientDescentOptimiser`),
+- Adam (`AdamOptimiser`).
 
-There are also small utilities for:
-
-- random mini-batch generation,
-- activation + loss math,
-- and learning-rate scheduling.
+`Trainer.hpp` ties a `DataSet`, an optimizer, and an eval function together into a training
+loop with periodic evaluation, best-score tracking, and checkpointing.
 
 ---
 
@@ -59,25 +58,28 @@ There are also small utilities for:
 
 ### Network
 
-- Dense feedforward architecture (`FFNN`).
-- He-style random initialization (`from_random_he_scaling`).
-- Binary serialization/deserialization (`write_to_file`, `from_file`).
+- Dense feedforward architecture (`FFNN`), parameters only — no scratch state.
+- He-style random initialization (`FFNN::from_random_he_scaling`).
+- Versioned binary serialization (`write_to_file`, `from_file`).
 
 ### Activations
 
 - `linear`
 - `relu`
 - `relu_clipped`
+- `tan_h`
 - `sigmoid`
 - `softmax`
 
 ### Costs
 
-- `quadratic`
+- `mse`
 - `binary_cross_entropy`
 - `categorical_cross_entropy`
 
 ### Regularization
+
+Set on the optimizer (`GradientDescentOptimiser`/`AdamOptimiser`), not on the model:
 
 - `none`
 - `l1`
@@ -85,8 +87,8 @@ There are also small utilities for:
 
 ### Optimizers
 
-- `GradientDescentOptimiser`
-- `AdamOptimiser`
+- `GradientDescentOptimiser::from_ffnn(...)`
+- `AdamOptimiser::from_ffnn(...)`
 
 ### LR Schedulers
 
@@ -94,23 +96,37 @@ There are also small utilities for:
 - exponential decay
 - decay-on-plateau
 
+`Trainer.hpp`'s `train_with_scheduler` steps any of these once per eval interval.
+
+### Data
+
+- `DataSet`: two big matrices (`input_dim x n`, `label_dim x n`), not one matrix per sample.
+- `Batcher`: draws random mini-batches from a `DataSet`; its rng is seeded once at construction,
+  so the same seed always reproduces the same sequence of batches.
+
 ---
 
 ## Repository Layout
 
 Top-level highlights:
 
-- `FFNN.hpp`: neural-net definition + forward/backward logic
+- `FFNN.hpp`: model parameters + forward/backward logic
+- `Workspace.hpp`: `ForwardWorkspace`/`BackpropWorkspace` scratch buffers used by forward/backward
 - `ActivationFunction.hpp`: activations + derivatives
 - `CostType.hpp`: loss functions + derivatives
+- `RegularizationType.hpp`: `none`/`l1`/`l2`
 - `GradientDescentOptimiser.hpp`: SGD-like update step
 - `AdamOptimiser.hpp`: Adam update step
 - `LrSchedulers.hpp`: learning-rate scheduler helpers
-- `NN_Utils.hpp`: batching + shape checks + utility math
+- `NN_Utils.hpp`: regularization helper + small shape utilities
+- `DataSet.hpp`: `DataSet` + `Batcher`
+- `Trainer.hpp`: shared training loop + `nn_utils::argmax_accuracy`
 - `main.cpp`: simple optimizer comparison demo
-- `MNIST/MNIST.cpp`: training example on CSV image data
-- `MNIST/MNIST_inference.cpp`: inference/evaluation example
+- `spiral/spiral.cpp`: self-contained spiral classifier demo (no data files needed)
+- `MNIST/MNIST.cpp`: training example on the MNIST/Fashion-MNIST binary datasets
+- `MNIST/Transform_Data_To_Binary.cpp`: converts the CSV datasets to the binary `DataSet` format
 - `tictactoe/`: board engine, minimax agents, benchmarking utilities, and FFNN training experiments
+- `tests/`: gradient-check, serialization, and `Batcher` tests
 - `Eigen/`: vendored Eigen headers
 
 ---
@@ -121,6 +137,7 @@ This project currently depends on:
 
 - a C++23-capable compiler,
 - Eigen headers (already included in this repo under `Eigen/`),
+- CMake 3.20+ (optional — direct compiler invocations work too),
 - optional OpenMP support for some training runs.
 
 No external package manager is required for the core code path shown here.
@@ -129,103 +146,94 @@ No external package manager is required for the core code path shown here.
 
 ## Build and Run
 
-Since this is a header-only project, the examples are compiled with direct `g++` or `clang++` commands.
-
-### 1) Basic Demo (`main.cpp`)
-
-#### Windows (MinGW g++)
+### CMake (recommended)
 
 ```bash
-g++ -std=c++23 -O3 -o demo.exe main.cpp
-demo.exe
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build -j
 ```
 
-#### Linux/macOS (g++)
+This builds `demo`, `mnist_train`, `mnist_transform`, `spiral_demo`, `ttt_interface`, and the
+tests under `tests/`. Run `ctest --test-dir build` to run the tests.
+
+Executables read relative paths (e.g. `MNIST/bin/test.dat`), so run them from the repo root:
 
 ```bash
-g++ -std=c++23 -O3 -o demo main.cpp
-./demo
+./build/spiral_demo
 ```
 
-### 2) MNIST / Fashion-MNIST Training Example
+`tictactoe/train.cpp` is an incomplete stub and is intentionally not built by CMake.
 
-#### Windows (without OpenMP)
+### Direct compiler invocations
 
-```bash
-g++ -std=c++23 -O3 -o mnist_train.exe MNIST/MNIST.cpp
-mnist_train.exe
-```
-
-#### Windows (with OpenMP)
+Since this is a header-only project, everything also compiles with a single `g++`/`clang++`
+command. Each example's own header comment has the exact command; the short version:
 
 ```bash
-g++ -std=c++23 -fopenmp -O3 -o mnist_train.exe MNIST/MNIST.cpp
-mnist_train.exe
-```
+# basic optimizer demo
+g++ -std=c++23 -O3 -o demo main.cpp && ./demo
 
-#### macOS (clang + Homebrew libomp)
+# spiral classifier (macOS/clang with Homebrew libomp shown; drop the OpenMP flags if unneeded)
+clang++ -std=c++23 -O3 -march=native spiral/spiral.cpp -o spiral_demo && ./spiral_demo
 
-```bash
-clang++ -std=c++23 -O3 -march=native -Xpreprocessor -fopenmp \
-	-I"$(brew --prefix libomp)/include" MNIST/MNIST.cpp \
-	-L"$(brew --prefix libomp)/lib" -lomp -o mnist_train
-./mnist_train
-```
+# MNIST training (see MNIST/MNIST.cpp header for the OpenMP variant)
+g++ -std=c++23 -O3 -o mnist_train MNIST/MNIST.cpp && ./mnist_train
 
-### 3) MNIST Inference Example
-
-```bash
-g++ -std=c++23 -O3 -o mnist_infer.exe MNIST/MNIST_inference.cpp
-mnist_infer.exe
-```
-
-### 4) Tic-Tac-Toe Benchmark Example
-
-```bash
-g++ -std=c++23 -O3 -o ttt_play.exe tictactoe/interface.cpp
-ttt_play.exe
-```
-
-### 5) Tic-Tac-Toe FFNN Training Example
-
-```bash
-g++ -std=c++23 -O3 -o ttt_train.exe tictactoe/train.cpp
-ttt_train.exe
+# tic-tac-toe agent benchmark
+g++ -std=c++23 -O3 -o ttt_interface tictactoe/interface.cpp && ./ttt_interface
 ```
 
 ---
 
 ## Quick Start API Example
 
-Use this if you want a minimal in-code setup:
-
 ```cpp
 #include "FFNN.hpp"
 #include "AdamOptimiser.hpp"
 
 int main() {
-	std::vector<size_t> shape = {128, 256, 128};
-	std::vector<ActivationFunc> acts = {relu, relu};
+    std::vector<size_t> shape = {128, 256, 128};
+    std::vector<ActivationFunc> acts = {ActivationFunc::relu, ActivationFunc::relu};
 
-	FFNN model = FFNN::from_random_he_scaling(shape, acts);
-	AdamOptimiser opt(model, CostType::quadratic, 1e-3);
+    FFNN model = FFNN::from_random_he_scaling(shape, acts);
+    AdamOptimiser opt = AdamOptimiser::from_ffnn(model, CostType::mse, 1e-3f);
 
-	Eigen::MatrixXf x = Eigen::MatrixXf::Random(128, 64);
-	Eigen::MatrixXf y = Eigen::MatrixXf::Random(128, 64);
+    Eigen::MatrixXf x = Eigen::MatrixXf::Random(128, 64);
+    Eigen::MatrixXf y = Eigen::MatrixXf::Random(128, 64);
 
-	for (int i = 0; i < 1000; ++i) {
-		float cost = opt.step(x, y);
-		if (i % 100 == 0) {
-			std::cout << "step=" << i << " cost=" << cost << "\n";
-		}
-	}
+    for (int i = 0; i < 1000; ++i) {
+        float cost = opt.step(x, y);
+        if (i % 100 == 0) {
+            std::cout << "step=" << i << " cost=" << cost << "\n";
+        }
+    }
 }
+```
+
+With a `DataSet` and the shared trainer:
+
+```cpp
+#include "FFNN.hpp"
+#include "AdamOptimiser.hpp"
+#include "Trainer.hpp"
+
+DataSet train_data = DataSet::from_file("train.dat");
+DataSet test_data = DataSet::from_file("test.dat");
+
+FFNN model = FFNN::from_random_he_scaling({784, 128, 10}, {ActivationFunc::relu, ActivationFunc::softmax});
+AdamOptimiser opt = AdamOptimiser::from_ffnn(model, CostType::categorical_cross_entropy, 1e-3f);
+
+TrainSettings settings{.num_steps = 10000, .batch_size = 256, .checkpoint_path = "best.dat"};
+TrainResult result = train(model, opt, train_data, settings,
+    [&](const FFNN& m) { return nn_utils::argmax_accuracy(m, test_data); });
 ```
 
 Notes:
 
-- Columns are treated as batch elements in several training paths.
+- Columns are batch elements throughout: inputs/targets/`DataSet` matrices are `dim x n`.
 - Keep your input/target matrix shapes consistent with layer sizes.
+- `forward`/`backward` are `const` and take a `ForwardWorkspace`/`BackpropWorkspace`; there's also
+  a convenience `forward(input)` overload that allocates its own workspace for one-off calls.
 
 ---
 
@@ -233,88 +241,106 @@ Notes:
 
 ### `main.cpp` optimizer comparison
 
-Runs two identical network setups in parallel:
+Runs two identical network setups in parallel — one with gradient descent, one with Adam — both
+trained on random synthetic data. Useful for quickly sanity-checking update behavior; Adam should
+converge faster than plain gradient descent on the same data.
 
-- one with gradient descent,
-- one with Adam,
-- both trained on random synthetic data.
+### `spiral/spiral.cpp` spiral classifier
 
-Useful for quickly sanity-checking update behavior.
-You should see Adam converge faster than plain gradient descent on the same synthetic data.
+A self-contained demo: generates an n-arm spiral dataset in memory (no files needed), trains a
+small classifier with `Trainer` and an exponential LR scheduler, and renders the learned decision
+boundary as a coloured ASCII grid. A good first thing to run to confirm the toolchain works.
 
-### `MNIST/MNIST.cpp` training on CSV datasets
+### `MNIST/MNIST.cpp` training on the MNIST/Fashion-MNIST binary datasets
 
 What it does:
 
-- reads CSV image data into vectors of `(image, one-hot label)`,
+- loads `DataSet`s from `MNIST/bin/{train,test}.dat`,
 - constructs a multi-layer FFNN,
-- samples random mini-batches,
-- trains with Adam and a scheduler,
-- periodically evaluates + writes model checkpoints (`.dat`).
+- trains with Adam via the shared `Trainer`, with a per-batch noise-injection hook (see
+  `MNIST/optimising.md` for why),
+- checkpoints to `MNIST/models/best.dat` whenever test accuracy improves.
 
-Default data paths in code currently point to:
+### `MNIST/Transform_Data_To_Binary.cpp` CSV to binary conversion
 
-- `MNIST/Fashion-MNIST/train.csv`
-- `MNIST/Fashion-MNIST/test.csv`
-
-### `MNIST/MNIST_inference.cpp` model evaluation
-
-What it does:
-
-- loads a serialized model with `FFNN::from_file(...)`,
-- reads test CSV data,
-- runs forward passes,
-- reports classification accuracy.
-
-If your filenames differ, update the hardcoded paths in the source file.
+Reads `MNIST/MNIST/{train,test}.csv` and `MNIST/Fashion-MNIST/{train,test}.csv`, and writes the
+binary `DataSet` files that `MNIST.cpp` reads (`MNIST/bin/*.dat` and
+`MNIST/Fashion-MNIST/bin/*.dat`). Run this once before training if the `.dat` files don't exist
+yet — they're gitignored.
 
 ### `tictactoe/` search and training experiments
 
-This folder contains a board engine, search agents, and training experiments rather than a placeholder scaffold.
+This folder contains a board engine, search agents, and training experiments.
 
-Current code centers on a `5x5` board with a `4-in-a-row` win condition and includes:
+Current code centers on an `N x N` board with a configurable win length and includes:
 
 - a reusable `TicTacToe<N, W>` game type,
-- random, human, and multiple minimax agents (`MinimaxRev1` through `MinimaxRev5`),
-- benchmarking utilities for agent-vs-agent matches,
+- random, human, and minimax agents (`MinimaxRev1` through `MinimaxRev4`),
+- benchmarking utilities for agent-vs-agent matches (`agentTools.hpp`),
 - an `FFNNAgent` that uses the neural net as a board evaluator inside minimax,
-- and training-data generation from self-play or minimax-vs-minimax games.
+- and training-data generation from self-play or minimax-vs-minimax games (`get_training_data`).
 
-`tictactoe/interface.cpp` currently benchmarks search agents, with the default setup comparing `MinimaxRev4` and `MinimaxRev5`.
-
-`tictactoe/train.cpp` supports a simple training workflow:
-
-- start a new run or load an existing run,
-- optionally reuse pregenerated board/evaluation pairs,
-- train a small FFNN on minimax-generated targets,
-- save the trained network under `tictactoe/training_runs/run_x/`,
-- and benchmark the resulting FFNN-backed agent against `MinimaxRev4`.
+`tictactoe/interface.cpp` benchmarks search agents. `tictactoe/train.cpp` is currently an
+incomplete stub.
 
 ---
 
-## Model Saving and Loading
+## Model and Dataset Files
 
-`FFNN` supports binary persistence:
+`FFNN` supports versioned binary persistence:
 
 - save: `model.write_to_file("model.dat")`
 - load: `FFNN loaded = FFNN::from_file("model.dat")`
 
-Serialized content includes:
+The file starts with a `"FFNN"` magic and version number; files from before this format (no
+magic header) are rejected with a clear error rather than silently misread — retrain or
+regenerate them.
 
-- network shape,
-- activation-function sequence,
-- all weight matrices,
-- all bias vectors.
+`DataSet` uses the same idea (`"FFDS"` magic + version):
 
-This makes it straightforward to separate training and inference programs.
+- save: `dataset.write_to_file("data.dat")`
+- load: `DataSet loaded = DataSet::from_file("data.dat")`
+- `DataSet::from_files({...})` concatenates multiple files
+- `DataSet::from_samples(inputs, labels)` builds one from a `vector<Eigen::VectorXf>` pair, for
+  producers (like self-play) that don't know the sample count ahead of time
+
+Both formats are gitignored (`*.dat`); regenerate them locally with
+`MNIST/Transform_Data_To_Binary.cpp` or by rerunning training.
+
+---
+
+## Running the Tests
+
+```bash
+./tests/run_tests.sh
+```
+
+or, via CMake, `ctest --test-dir build`. Covers:
+
+- `test_gradients.cpp`: `FFNN::backward` vs. central-difference numerical gradients across
+  activation/cost/regularization combinations,
+- `test_serialization.cpp`: `FFNN`/`DataSet` binary round trips + bad-magic rejection,
+- `test_batcher.cpp`: `Batcher` seed determinism and batch-size clamping.
 
 ---
 
 ## Common Gotchas
 
 - Activation/cost pairing matters:
-	- `binary_cross_entropy` expects sigmoid in output layer.
-	- `categorical_cross_entropy` expects softmax in output layer.
-- File paths in examples are hardcoded; adjust if your dataset names differ.
-- Batch dimensions are column-oriented in this implementation style.
+	- `binary_cross_entropy` expects sigmoid in the output layer.
+	- `categorical_cross_entropy` expects softmax in the output layer.
+- Regularization is set on the optimizer, not on `FFNN::from_random_he_scaling`.
+- File paths in examples are hardcoded relative paths; run executables from the repo root.
+- Batch dimensions are column-oriented throughout (columns are samples).
 - If OpenMP flags are unsupported on your compiler, compile without them first.
+
+---
+
+## Performance Tips
+
+- Build with `-O3` (CMake's `Release` config does this) for meaningful training speed.
+- Consider `-march=native` where available (CMake enables it automatically if supported).
+- Reuse a `ForwardWorkspace`/`BackpropWorkspace` across calls instead of using the
+  allocating convenience `forward(input)` overload in any hot loop.
+- On some CPUs, denormals can hurt performance; consider enabling flush-to-zero in training code.
+- If profiling shows I/O bottlenecks, cache parsed datasets in the binary `DataSet` format.

@@ -1,4 +1,4 @@
-// ignore anything without a dot
+# ignore anything without a dot
 *
 !*/
 !*.*
@@ -9,4 +9,9 @@ test
 .DS_Store
 *.dat
 *.csv
+
+# CMake build directories have dotted config files (CMakeCache.txt, *.cmake) that would
+# otherwise slip through the "anything with a dot" rule above
+/build/
+/build_*/
 
