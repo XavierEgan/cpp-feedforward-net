@@ -7,7 +7,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 if(NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE Release)
 endif()
-set(CMAKE_CXX_FLAGS_RELEASE "-O3")
+set(CMAKE_CXX_FLAGS_RELEASE "-O3 -DNDEBUG")
 
 include(CheckCXXCompilerFlag)
 check_cxx_compiler_flag("-march=native" HAS_MARCH_NATIVE)
@@ -18,6 +18,17 @@ endif()
 # header-only library: everything lives under the repo root, Eigen is vendored in Eigen/
 add_library(ffnn INTERFACE)
 target_include_directories(ffnn INTERFACE ${CMAKE_CURRENT_SOURCE_DIR})
+
+# AppleClang doesn't bundle OpenMP; point find_package at Homebrew's libomp if present, same as
+# the -Xpreprocessor -fopenmp one-liners in the example file header comments
+if(APPLE AND CMAKE_CXX_COMPILER_ID MATCHES "Clang" AND NOT OpenMP_CXX_FOUND)
+    execute_process(COMMAND brew --prefix libomp OUTPUT_VARIABLE LIBOMP_PREFIX OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_QUIET)
+    if(LIBOMP_PREFIX)
+        set(OpenMP_CXX_FLAGS "-Xpreprocessor -fopenmp -I${LIBOMP_PREFIX}/include")
+        set(OpenMP_CXX_LIB_NAMES "omp")
+        set(OpenMP_omp_LIBRARY "${LIBOMP_PREFIX}/lib/libomp.dylib")
+    endif()
+endif()
 
 find_package(OpenMP QUIET)
 
