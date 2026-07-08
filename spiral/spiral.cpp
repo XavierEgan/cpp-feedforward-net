@@ -4,6 +4,8 @@ clang++ -std=c++23 -O3 -march=native ./spiral/spiral.cpp -o spiral_demo && ./spi
 
 #include "../DataSet.hpp"
 #include "../AdamOptimiser.hpp"
+#include "../Trainer.hpp"
+#include "../LrSchedulers.hpp"
 
 #include <cmath>
 #include <random>
@@ -15,7 +17,7 @@ constexpr int NUM_CLASSES = 3;
 constexpr int POINTS_PER_CLASS = 400;
 constexpr float TEST_SPLIT = 0.2f;
 
-constexpr int EVAL_PRINT_INTERVAL = 200;
+constexpr int EVAL_INTERVAL = 200;
 
 // ansi colours for the decision boundary render, one per class
 const std::string CLASS_COLOURS[NUM_CLASSES] = {"\033[31m", "\033[32m", "\033[34m"};
@@ -27,10 +29,11 @@ struct Settings {
     CostType cost_type;
     RegularizationType reg_type;
 
-    size_t num_epochs;
+    size_t num_steps;
     int seed;
     size_t batch_size;
     double lr;
+    double lr_final;
     float spiral_noise;
 };
 
@@ -74,25 +77,6 @@ void generate_spiral(std::vector<Eigen::VectorXf>& train_inputs, std::vector<Eig
             }
         }
     }
-}
-
-float eval_accuracy(const DataSet& data, const FFNN& ffnn) {
-    int total_right = 0;
-
-    // get all predictions in one forward pass
-    const auto predictions = ffnn.forward(data.inputs);
-
-    for (Eigen::Index i = 0; i < data.inputs.cols(); i++) {
-        Eigen::Index answer = 0, answer_col = 0;
-        data.labels.col(i).maxCoeff(&answer, &answer_col);
-
-        Eigen::Index prediction = 0, prediction_col = 0;
-        predictions.col(i).maxCoeff(&prediction, &prediction_col);
-
-        if (answer == prediction) total_right++;
-    }
-
-    return static_cast<float>(total_right) / static_cast<float>(data.size());
 }
 
 /*
@@ -139,10 +123,11 @@ int main() {
         .ffnn_funcs = {ActivationFunc::relu, ActivationFunc::relu, ActivationFunc::relu, ActivationFunc::softmax},
         .cost_type = CostType::categorical_cross_entropy,
         .reg_type = RegularizationType::none,
-        .num_epochs = 4000,
+        .num_steps = 4000,
         .seed = 1,
         .batch_size = 128,
         .lr = 0.002,
+        .lr_final = 0.0002,
         .spiral_noise = 0.2f
     };
 
@@ -159,38 +144,32 @@ int main() {
 
     FFNN ffnn = FFNN::from_random_he_scaling(settings.ffnn_shape, settings.ffnn_funcs);
     AdamOptimiser optimiser = AdamOptimiser::from_ffnn(ffnn, settings.cost_type, settings.lr, settings.reg_type);
-    Batcher batcher = Batcher::from_dataset(train_dataset, settings.seed);
 
-    Eigen::MatrixXf inputs;
-    Eigen::MatrixXf targets;
+    // decays the learning rate exponentially over the course of training, stepped once per eval
+    nn_utils::LRSchedulerExponential scheduler = nn_utils::LRSchedulerExponential::from_num_generation(
+        settings.lr, settings.lr_final, static_cast<int>(settings.num_steps / EVAL_INTERVAL));
 
-    float best_test_score = std::numeric_limits<float>::min();
-    int best_test_epoch = 0;
+    TrainSettings train_settings{
+        .num_steps = settings.num_steps,
+        .batch_size = settings.batch_size,
+        .eval_interval = EVAL_INTERVAL,
+        .print_interval = EVAL_INTERVAL,
+        .seed = static_cast<unsigned int>(settings.seed),
+        .checkpoint_path = "spiral/spiral_model.dat"
+    };
 
-    for (auto epoch{0uz}; epoch < settings.num_epochs; epoch++) {
-        batcher.next_batch(settings.batch_size, inputs, targets);
+    TrainResult result = train_with_scheduler(ffnn, optimiser, scheduler, train_dataset, train_settings,
+        [&](const FFNN& ffnn) { return nn_utils::argmax_accuracy(ffnn, test_dataset); });
 
-        float cost = optimiser.step(inputs, targets);
-
-        if (epoch % EVAL_PRINT_INTERVAL == 0) {
-            const float test_score = eval_accuracy(test_dataset, ffnn);
-            if (test_score > best_test_score) {
-                best_test_score = test_score;
-                best_test_epoch = epoch;
-            }
-            std::cout << "Epoch " << epoch + 1 << "/" << settings.num_epochs << " | Cost " << cost << " | Test " << test_score * 100 << "% | Best " << best_test_score * 100 << "% at " << best_test_epoch << "\n";
-        }
-    }
-
-    const float final_train = eval_accuracy(train_dataset, ffnn);
-    const float final_test = eval_accuracy(test_dataset, ffnn);
-    std::cout << "\nfinal train accuracy: " << final_train * 100 << "%\n";
+    const float final_train = nn_utils::argmax_accuracy(ffnn, train_dataset);
+    const float final_test = nn_utils::argmax_accuracy(ffnn, test_dataset);
+    std::cout << "\nbest test score " << result.best_score * 100 << "% at step " << result.best_step << "\n";
+    std::cout << "final train accuracy: " << final_train * 100 << "%\n";
     std::cout << "final test accuracy:  " << final_test * 100 << "%\n\n";
 
     render_decision_boundary(ffnn);
 
-    ffnn.write_to_file("spiral/spiral_model.dat");
-    std::cout << "\nmodel saved to spiral/spiral_model.dat\n";
+    std::cout << "\nmodel saved to " << train_settings.checkpoint_path << "\n";
 
     return 0;
 }
