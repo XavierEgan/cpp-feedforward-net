@@ -344,3 +344,15 @@ or, via CMake, `ctest --test-dir build`. Covers:
   allocating convenience `forward(input)` overload in any hot loop.
 - On some CPUs, denormals can hurt performance; consider enabling flush-to-zero in training code.
 - If profiling shows I/O bottlenecks, cache parsed datasets in the binary `DataSet` format.
+
+### Profiling with samply
+
+To profile with a sampling profiler like [samply](https://github.com/mstange/samply), build with
+`RelWithDebInfo` — it's `-O3 -g -DNDEBUG -fno-omit-frame-pointer` here (not CMake's usual
+`-O2 -g`), so the profile reflects real Release performance while still symbolicating:
+
+```bash
+cmake -S . -B build -DCMAKE_BUILD_TYPE=RelWithDebInfo
+cmake --build build -j
+samply record ./build/mnist_train   # run from the repo root, same as any other build
+```

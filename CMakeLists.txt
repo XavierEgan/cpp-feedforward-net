@@ -9,6 +9,10 @@ if(NOT CMAKE_BUILD_TYPE)
 endif()
 set(CMAKE_CXX_FLAGS_RELEASE "-O3 -DNDEBUG")
 
+# -O3 with debug symbols for profiling (e.g. `samply record`); frame pointers are kept so
+# sampling profilers can unwind the stack even at -O3, where they're normally omitted
+set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "-O3 -g -DNDEBUG -fno-omit-frame-pointer")
+
 include(CheckCXXCompilerFlag)
 check_cxx_compiler_flag("-march=native" HAS_MARCH_NATIVE)
 if(HAS_MARCH_NATIVE)
