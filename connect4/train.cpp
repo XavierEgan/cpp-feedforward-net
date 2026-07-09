@@ -66,7 +66,7 @@ int main(int argc, const char* argv[]) {
 
     FFNN model = FFNN::from_random_he_scaling(shape, acts);
     // l2 keeps the net from memorising the (noisy) outcome labels
-    AdamOptimiser opt = AdamOptimiser::from_ffnn(model, CostType::mse, 1e-3f, RegularizationType::l2, 1e-3f);
+    AdamOptimiser opt = AdamOptimiser::from_ffnn(model, CostType::mse, 1e-3f, RegularizationType::l2, 1e-6f);
 
     std::filesystem::create_directories("connect4/models");
 

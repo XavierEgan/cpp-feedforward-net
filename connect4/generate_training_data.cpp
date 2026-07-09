@@ -16,16 +16,16 @@ DataSet get_training_data(const int num_games, const double teacher_ms) {
     const int games_per_thread = num_games / num_threads;
     const int remainder = num_games % num_threads;
 
-    std::cout << "generating " << num_games << " self-play games at " << teacher_ms << "ms/move" << " with " << num_threads << " threads..." << std::endl;
+    std::cout << "generating " << num_games << " self-play games at " << teacher_ms << "ms/evaluation" << " with " << num_threads << " threads..." << std::endl;
 
     auto worker = [num_games, teacher_ms, games_per_thread, remainder](int thread_id) {
         int our_num_games = games_per_thread + (thread_id < remainder ? 1 : 0);
 
         if (!our_num_games) return DataSet::empty(width * height, 1);
 
-        C4NegamaxAgent<width, height> teacher_a(teacher_ms, "teacher-a");
-        C4NegamaxAgent<width, height> teacher_b(teacher_ms, "teacher-b");
-        C4NegamaxAgent<width, height> evaluator;
+        C4NegamaxAgent<width, height> teacher_a(1, "teacher-a");
+        C4NegamaxAgent<width, height> teacher_b(1, "teacher-b");
+        C4NegamaxAgent<width, height> evaluator(teacher_ms, "evaluator");
 
         return c4_get_training_data<width, height>(teacher_a, teacher_b, evaluator, our_num_games, 0.15f);
     };

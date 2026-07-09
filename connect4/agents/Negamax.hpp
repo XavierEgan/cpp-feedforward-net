@@ -111,12 +111,28 @@ struct C4NegamaxAgent {
     int last_depth = -1;
     int get_last_depth() const { return last_depth; }
 
-    // fixed-depth search score from RED's perspective
+    // time-budgeted (max_move_time) iterative-deepening search score from RED's
+    // perspective. a fixed ply count spends wildly uneven wall-clock across
+    // positions — early boards have a much bigger subtree per ply than a
+    // near-full one — so depth scales with the budget instead: cheap positions
+    // get searched far deeper, expensive ones get whatever depth fits
     float get_eval(Connect4<WIDTH, HEIGHT>& game) {
         tt.new_search();
-        constexpr std::chrono::steady_clock::time_point far_future =
-            std::chrono::steady_clock::time_point::max();
-        const float stm_score = _negamax(game, -INF, INF, 8, far_future);
+
+        const std::chrono::steady_clock::time_point deadline =
+            std::chrono::steady_clock::now() +
+            std::chrono::duration_cast<std::chrono::steady_clock::duration>(max_move_time);
+
+        const int max_depth = Game::num_cells - game.num_moves;
+        float stm_score = _leaf_eval(game);
+
+        for (int depth = 1; depth <= max_depth; depth++) {
+            const float val = _negamax(game, -INF, INF, depth, deadline);
+            if (std::chrono::steady_clock::now() >= deadline) break;
+            stm_score = val;
+            if (std::abs(stm_score) >= WIN_SCORE) break; // forced win/loss found, deeper search won't change it
+        }
+
         return (game.next_player() == Disc::RED) ? stm_score : -stm_score;
     }
 

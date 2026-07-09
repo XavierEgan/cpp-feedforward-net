@@ -151,11 +151,19 @@ private:
 };
 
 // draws random mini-batches from a dataset; the rng is seeded once at construction, so the
-// same seed always reproduces the same sequence of batches
+// same seed always reproduces the same sequence of batches.
+//
+// indices are shuffled once per epoch and consumed via a cursor, rather than reshuffled on
+// every call: a full reshuffle per batch costs O(n) rng draws to get O(batch_size) samples,
+// which dominates runtime once n is much bigger than batch_size. if what's left in the current
+// epoch is short of a full batch, the leftover tail is dropped and a fresh epoch begins —
+// simpler than stitching a batch across two epochs, at the cost of rarely under-using a
+// handful of samples
 struct Batcher {
     const DataSet& data;
     std::mt19937 rng;
     std::vector<Eigen::Index> indices;
+    size_t cursor = 0;
 
     static Batcher from_dataset(const DataSet& data, unsigned int seed = std::random_device{}()) {
         return Batcher(data, seed);
@@ -171,17 +179,23 @@ struct Batcher {
         if (indices.size() != n) {
             indices.resize(n);
             std::iota(indices.begin(), indices.end(), 0);
+            cursor = n; // force a shuffle below
         }
 
-        std::shuffle(indices.begin(), indices.end(), rng);
+        if (cursor + batch_size > n) {
+            std::shuffle(indices.begin(), indices.end(), rng);
+            cursor = 0;
+        }
 
         out_inputs.resize(data.inputs.rows(), batch_size);
         out_labels.resize(data.labels.rows(), batch_size);
 
         for (size_t b = 0; b < batch_size; b++) {
-            out_inputs.col(b) = data.inputs.col(indices.at(b));
-            out_labels.col(b) = data.labels.col(indices.at(b));
+            out_inputs.col(b) = data.inputs.col(indices.at(cursor + b));
+            out_labels.col(b) = data.labels.col(indices.at(cursor + b));
         }
+
+        cursor += batch_size;
     }
 
     Batcher() = delete;
