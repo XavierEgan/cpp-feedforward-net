@@ -28,6 +28,10 @@ struct DataSet {
         return static_cast<size_t>(inputs.cols());
     }
 
+    static DataSet empty(size_t input_dim, size_t label_dim) {
+        return DataSet(Eigen::MatrixXf(input_dim, 0), Eigen::MatrixXf(label_dim, 0));
+    }
+
     static DataSet from_file(const std::string& path) {
         std::ifstream f(path, std::ios::binary);
         if (!f) throw std::runtime_error("from_file: cannot open file for reading: " + path);
