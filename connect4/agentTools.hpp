@@ -198,6 +198,7 @@ DataSet c4_get_training_data(A1& a1, A2& a2, int num_games = 1000, float epsilon
 
         if (!quiet) std::cout << "game " << g + 1 << "/" << num_games << " played (" << inputs.size() << " positions)" << std::endl;
     }
-
+    if (inputs.size() != labels.size()) throw std::runtime_error("c4_get_training_data: inputs and labels size mismatch");
+    if (inputs.size() == 0 || labels.size() == 0) return DataSet::empty(WIDTH * HEIGHT, 1);
     return DataSet::from_samples(inputs, labels);
 }
