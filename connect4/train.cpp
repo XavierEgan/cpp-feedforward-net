@@ -20,6 +20,9 @@
 #include <filesystem>
 #include <iostream>
 #include <string>
+#include <thread>
+#include <future>
+#include <chrono>
 
 constexpr int width = 7;
 constexpr int height = 6;
@@ -30,19 +33,51 @@ float value_mse(const FFNN& ffnn, const DataSet& data) {
     return (predictions - data.labels).squaredNorm() / static_cast<float>(data.size());
 }
 
+DataSet get_training_data(const int num_games, const double teacher_ms, const size_t train_steps) {
+    const int num_threads = std::thread::hardware_concurrency();
+    const int games_per_thread = num_games / num_threads;
+    const int remainder = num_games % num_threads;
+
+    std::cout << "generating " << num_games << " self-play games at " << teacher_ms << "ms/move" << " with " << num_threads << " threads..." << std::endl;
+
+    auto worker = [num_games, teacher_ms, games_per_thread, remainder](int thread_id) {
+        int our_num_games = games_per_thread + (thread_id < remainder ? 1 : 0);
+
+        if (!our_num_games) return DataSet::empty(width * height, 1);
+
+        C4NegamaxAgent<width, height> teacher_a(teacher_ms, "teacher-a");
+        C4NegamaxAgent<width, height> teacher_b(teacher_ms, "teacher-b");
+
+        return c4_get_training_data<width, height>(teacher_a, teacher_b, our_num_games, 0.15f);
+    };
+    std::vector<std::future<DataSet>> futures;
+    for (int i = 0; i < num_threads; ++i) {
+        futures.push_back(std::async(std::launch::async, worker, i));
+    }
+
+    DataSet all_data = DataSet::empty(width * height, 1);
+
+    for (auto& fut : futures) {
+        all_data.append(fut.get());
+    }
+
+    std::cout << "collected " << all_data.size() << " positions" << std::endl;
+    return all_data;
+}
+
 int main(int argc, const char* argv[]) {
     const int num_games = (argc > 1) ? std::stoi(argv[1]) : 2000;
     const double teacher_ms = (argc > 2) ? std::stod(argv[2]) : 2.0;
     const size_t train_steps = (argc > 3) ? static_cast<size_t>(std::stoul(argv[3])) : 20000;
 
     // ── 1. generate training data from negamax self-play ─────────────────────
-    std::cout << "generating " << num_games << " self-play games at " << teacher_ms << "ms/move..." << std::endl;
-
-    C4NegamaxAgent<width, height> teacher_a(teacher_ms, "teacher-a");
-    C4NegamaxAgent<width, height> teacher_b(teacher_ms, "teacher-b");
-
-    DataSet all_data = c4_get_training_data<width, height>(teacher_a, teacher_b, num_games, 0.15f);
-    std::cout << "collected " << all_data.size() << " positions" << std::endl;
+    DataSet all_data = DataSet::empty(width * height, 1);
+    
+    auto start_time = std::chrono::high_resolution_clock::now();
+    all_data = get_training_data(num_games, teacher_ms, train_steps);
+    auto end_time = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double> elapsed = end_time - start_time;
+    std::cout << "self-play data generation took " << elapsed.count() << " seconds" << std::endl;
 
     // 90/10 train/test split (games are appended in order, so take the tail as test)
     const Eigen::Index n = all_data.inputs.cols();
