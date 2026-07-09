@@ -33,52 +33,25 @@ float value_mse(const FFNN& ffnn, const DataSet& data) {
     return (predictions - data.labels).squaredNorm() / static_cast<float>(data.size());
 }
 
-DataSet get_training_data(const int num_games, const double teacher_ms, const size_t train_steps) {
-    const int num_threads = std::thread::hardware_concurrency();
-    const int games_per_thread = num_games / num_threads;
-    const int remainder = num_games % num_threads;
-
-    std::cout << "generating " << num_games << " self-play games at " << teacher_ms << "ms/move" << " with " << num_threads << " threads..." << std::endl;
-
-    auto worker = [num_games, teacher_ms, games_per_thread, remainder](int thread_id) {
-        int our_num_games = games_per_thread + (thread_id < remainder ? 1 : 0);
-
-        if (!our_num_games) return DataSet::empty(width * height, 1);
-
-        C4NegamaxAgent<width, height> teacher_a(teacher_ms, "teacher-a");
-        C4NegamaxAgent<width, height> teacher_b(teacher_ms, "teacher-b");
-
-        return c4_get_training_data<width, height>(teacher_a, teacher_b, our_num_games, 0.15f);
-    };
-    std::vector<std::future<DataSet>> futures;
-    for (int i = 0; i < num_threads; ++i) {
-        futures.push_back(std::async(std::launch::async, worker, i));
-    }
-
-    DataSet all_data = DataSet::empty(width * height, 1);
-
-    for (auto& fut : futures) {
-        all_data.append(fut.get());
-    }
-
-    std::cout << "collected " << all_data.size() << " positions" << std::endl;
-    return all_data;
-}
-
 int main(int argc, const char* argv[]) {
-    const int num_games = (argc > 1) ? std::stoi(argv[1]) : 2000;
-    const double teacher_ms = (argc > 2) ? std::stod(argv[2]) : 2.0;
     const size_t train_steps = (argc > 3) ? static_cast<size_t>(std::stoul(argv[3])) : 20000;
 
-    // ── 1. generate training data from negamax self-play ─────────────────────
-    DataSet all_data = DataSet::empty(width * height, 1);
-    
-    auto start_time = std::chrono::high_resolution_clock::now();
-    all_data = get_training_data(num_games, teacher_ms, train_steps);
-    auto end_time = std::chrono::high_resolution_clock::now();
-    std::chrono::duration<double> elapsed = end_time - start_time;
-    std::cout << "self-play data generation took " << elapsed.count() << " seconds" << std::endl;
+    // ── 1. get training data from pre computed runs ─────────────────────
+    // get all files that start with "training_data_w7_h6_" and end with ".bin" in the connect4 folder
+    std::vector<std::string> training_files;
+    for (const auto& entry : std::filesystem::directory_iterator("connect4")) {
+        const std::string filename = entry.path().filename().string();
+        if (filename.rfind("training_data_w7_h6_", 0) == 0 && filename.size() > 4 && filename.substr(filename.size() - 4) == ".bin") {
+            training_files.push_back(entry.path().string());
+        }
+    }
 
+    if (training_files.empty()) {
+        throw std::runtime_error("no training data files found in connect4/; run generate_training_data first");
+    }
+
+    DataSet all_data = DataSet::from_files(training_files);
+    
     // 90/10 train/test split (games are appended in order, so take the tail as test)
     const Eigen::Index n = all_data.inputs.cols();
     const Eigen::Index n_train = n * 9 / 10;
@@ -93,7 +66,7 @@ int main(int argc, const char* argv[]) {
 
     FFNN model = FFNN::from_random_he_scaling(shape, acts);
     // l2 keeps the net from memorising the (noisy) outcome labels
-    AdamOptimiser opt = AdamOptimiser::from_ffnn(model, CostType::mse, 1e-3f, RegularizationType::l2, 1e-4f);
+    AdamOptimiser opt = AdamOptimiser::from_ffnn(model, CostType::mse, 1e-3f, RegularizationType::l2, 1e-3f);
 
     std::filesystem::create_directories("connect4/models");
 

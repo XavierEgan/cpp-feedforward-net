@@ -51,6 +51,7 @@ add_ffnn_executable(spiral_demo spiral/spiral.cpp)
 add_ffnn_executable(ttt_interface tictactoe/interface.cpp)
 add_ffnn_executable(c4_interface connect4/interface.cpp)
 add_ffnn_executable(c4_train connect4/train.cpp)
+add_ffnn_executable(c4_generate_training_data connect4/generate_training_data.cpp)
 # tictactoe/train.cpp is an incomplete stub (get_training_data() is called with no agents) and
 # is intentionally not built here
 
