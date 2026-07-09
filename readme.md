@@ -6,7 +6,7 @@ This repository is built for:
 
 - learning and experimenting with core neural-network training loops,
 - keeping the code easy to inspect and tweak,
-- and providing a few concrete example projects (toy benchmark, spiral classifier, MNIST/Fashion-MNIST, tic-tac-toe).
+- and providing a few concrete example projects (toy benchmark, spiral classifier, MNIST/Fashion-MNIST, tic-tac-toe, connect 4).
 
 The code is intentionally simple and header-driven, so the implementation is easy to read and modify.
 
@@ -126,7 +126,8 @@ Top-level highlights:
 - `MNIST/MNIST.cpp`: training example on the MNIST/Fashion-MNIST binary datasets
 - `MNIST/Transform_Data_To_Binary.cpp`: converts the CSV datasets to the binary `DataSet` format
 - `tictactoe/`: board engine, minimax agents, benchmarking utilities, and FFNN training experiments
-- `tests/`: gradient-check, serialization, and `Batcher` tests
+- `connect4/`: bitboard engine, negamax/FFNN agents, and a complete self-play training pipeline
+- `tests/`: gradient-check, serialization, `Batcher`, and connect 4 bitboard tests
 - `Eigen/`: vendored Eigen headers
 
 ---
@@ -153,8 +154,9 @@ cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build -j
 ```
 
-This builds `demo`, `mnist_train`, `mnist_transform`, `spiral_demo`, `ttt_interface`, and the
-tests under `tests/`. Run `ctest --test-dir build` to run the tests.
+This builds `demo`, `mnist_train`, `mnist_transform`, `spiral_demo`, `ttt_interface`,
+`c4_interface`, `c4_train`, and the tests under `tests/`. Run `ctest --test-dir build` to run
+the tests.
 
 Executables read relative paths (e.g. `MNIST/bin/test.dat`), so run them from the repo root:
 
@@ -181,6 +183,10 @@ g++ -std=c++23 -O3 -o mnist_train MNIST/MNIST.cpp && ./mnist_train
 
 # tic-tac-toe agent benchmark
 g++ -std=c++23 -O3 -o ttt_interface tictactoe/interface.cpp && ./ttt_interface
+
+# connect 4 agent benchmark / play / training pipeline
+g++ -std=c++23 -O3 -o c4_interface connect4/interface.cpp && ./c4_interface
+g++ -std=c++23 -O3 -o c4_train connect4/train.cpp && ./c4_train
 ```
 
 ---
@@ -283,6 +289,41 @@ Current code centers on an `N x N` board with a configurable win length and incl
 `tictactoe/interface.cpp` benchmarks search agents. `tictactoe/train.cpp` is currently an
 incomplete stub.
 
+### `connect4/` bitboard engine and self-play training pipeline
+
+The most complete game project in the repo. Unlike the tic-tac-toe array board, the engine
+(`connect4/connect4.hpp`) is a Fhourstones-style bitboard:
+
+- the whole board lives in two `uint64_t`s (side-to-move discs + all discs),
+- playing a move is three bit operations; win detection is four shift-and-ands,
+- `pos + mask` is a perfect hash of the position, so the transposition table needs no zobrist keys,
+- `winning_spots()` computes all cells that would complete 4-in-a-row with pure bit tricks,
+  powering both the static eval and exact immediate-win/forced-block detection in search.
+
+Agents (`connect4/agents/`, all satisfying the `C4Agent` concept):
+
+- `C4RandomAgent`, `C4HumanAgent`,
+- `C4NegamaxAgent`: iterative-deepening alpha-beta with a generation-stamped flat TT,
+  threat-based move ordering, and forced-win/loss shortcuts,
+- `C4FFNNAgent`: the neural net as leaf evaluator inside the same search skeleton — exact
+  tactics handle wins/blocks, the net judges quiet positions.
+
+`connect4/interface.cpp` benchmarks agents (`./build/c4_interface`), and also lets you play in
+the terminal: `./build/c4_interface human` (vs. negamax) or `./build/c4_interface ffnn` (vs. the
+trained net).
+
+`connect4/train.cpp` is the complete training pipeline that `tictactoe/train.cpp` never got:
+
+1. negamax self-play with epsilon-random exploration generates games
+   (`c4_get_training_data`, with horizontal-mirror augmentation),
+2. every position is labelled with the final game outcome from RED's perspective,
+3. an FFNN value net (`42 -> 128 -> 64 -> 1`, tanh output) trains on mse with l2 + Adam via the
+   shared `Trainer`, checkpointing to `connect4/models/best.dat`,
+4. the checkpointed net is benchmarked as a search evaluator against random and negamax.
+
+Run `./build/c4_train [num_games] [teacher_ms] [train_steps]` from the repo root; defaults run
+in a few minutes, and more games / more teacher time produce a stronger net.
+
 ---
 
 ## Model and Dataset Files
@@ -320,7 +361,9 @@ or, via CMake, `ctest --test-dir build`. Covers:
 - `test_gradients.cpp`: `FFNN::backward` vs. central-difference numerical gradients across
   activation/cost/regularization combinations,
 - `test_serialization.cpp`: `FFNN`/`DataSet` binary round trips + bad-magic rejection,
-- `test_batcher.cpp`: `Batcher` seed determinism and batch-size clamping.
+- `test_batcher.cpp`: `Batcher` seed determinism and batch-size clamping,
+- `test_connect4.cpp`: bitboard win detection, play/unplay round trips, winning-spot
+  computation, and position-key uniqueness.
 
 ---
 

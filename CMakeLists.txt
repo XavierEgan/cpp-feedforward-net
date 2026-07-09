@@ -49,13 +49,15 @@ add_ffnn_executable(mnist_train MNIST/MNIST.cpp)
 add_ffnn_executable(mnist_transform MNIST/Transform_Data_To_Binary.cpp)
 add_ffnn_executable(spiral_demo spiral/spiral.cpp)
 add_ffnn_executable(ttt_interface tictactoe/interface.cpp)
+add_ffnn_executable(c4_interface connect4/interface.cpp)
+add_ffnn_executable(c4_train connect4/train.cpp)
 # tictactoe/train.cpp is an incomplete stub (get_training_data() is called with no agents) and
 # is intentionally not built here
 
 # executables that read relative paths like "MNIST/bin/test.dat" must be run from the repo root
 
 enable_testing()
-foreach(test_name test_gradients test_serialization test_batcher)
+foreach(test_name test_gradients test_serialization test_batcher test_connect4)
     add_executable(${test_name} tests/${test_name}.cpp)
     target_link_libraries(${test_name} PRIVATE ffnn)
     add_test(NAME ${test_name} COMMAND ${test_name})
