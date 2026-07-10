@@ -13,10 +13,24 @@
 #include <string>
 #include <vector>
 
+// dispatches to agent.get_move(game, seed) if the agent accepts a seed (negamax/ffnn use it to
+// break ties), otherwise falls back to agent.get_move(game) (e.g. C4RandomAgent seeds its own rng
+// at construction instead)
+template<typename Agent, int WIDTH, int HEIGHT>
+int c4_get_move(Agent& agent, Connect4<WIDTH, HEIGHT>& game, unsigned int seed) {
+    if constexpr (requires { agent.get_move(game, seed); }) {
+        return agent.get_move(game, seed);
+    } else {
+        return agent.get_move(game);
+    }
+}
+
 template<int WIDTH, int HEIGHT, C4Agent<WIDTH, HEIGHT> A1, C4Agent<WIDTH, HEIGHT> A2>
-void c4_benchmark_agents(A1& a1, A2& a2, int num_tests = 100, bool quiet = false) {
+void c4_benchmark_agents(A1& a1, A2& a2, int num_tests = 100, bool quiet = false,
+                          unsigned int seed = std::random_device{}()) {
     const std::chrono::steady_clock::time_point overall_start_time = std::chrono::steady_clock::now();
     Connect4<WIDTH, HEIGHT> game;
+    std::mt19937 rng(seed);
 
     int a1_wins = 0;
     int a2_wins = 0;
@@ -45,9 +59,8 @@ void c4_benchmark_agents(A1& a1, A2& a2, int num_tests = 100, bool quiet = false
             const bool is_a1_turn = game.next_player() == a1_piece;
 
             const std::chrono::steady_clock::time_point start_time = std::chrono::steady_clock::now();
-            int move;
-            if (is_a1_turn) move = a1.get_move(game);
-            else move = a2.get_move(game);
+            const int move = is_a1_turn ? c4_get_move<A1, WIDTH, HEIGHT>(a1, game, rng())
+                : c4_get_move<A2, WIDTH, HEIGHT>(a2, game, rng());
             const std::chrono::steady_clock::time_point end_time = std::chrono::steady_clock::now();
 
             if (is_a1_turn) {

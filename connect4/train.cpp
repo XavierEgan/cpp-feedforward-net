@@ -17,6 +17,7 @@
 #include "../Trainer.hpp"
 #include "../DataSet.hpp"
 
+#include <algorithm>
 #include <filesystem>
 #include <iostream>
 #include <string>
@@ -26,6 +27,7 @@
 
 constexpr int width = 7;
 constexpr int height = 6;
+constexpr int seed = 1;
 
 // mse of the net's outcome predictions on a held-out set
 float value_mse(const FFNN& ffnn, const DataSet& data) {
@@ -35,6 +37,8 @@ float value_mse(const FFNN& ffnn, const DataSet& data) {
 
 int main(int argc, const char* argv[]) {
     const size_t train_steps = (argc > 3) ? static_cast<size_t>(std::stoul(argv[3])) : 20000;
+
+    std::srand(seed);
 
     // ── 1. get training data from pre computed runs ─────────────────────
     // get all files that start with "training_data_w7_h6_" and end with ".bin" in the connect4 folder
@@ -49,6 +53,10 @@ int main(int argc, const char* argv[]) {
     if (training_files.empty()) {
         throw std::runtime_error("no training data files found in connect4/; run generate_training_data first");
     }
+
+    // directory iteration order isn't guaranteed stable, but the train/test split below depends
+    // on it (test is whatever ends up in the tail), so sort for a reproducible split given a seed
+    std::sort(training_files.begin(), training_files.end());
 
     DataSet all_data = DataSet::from_files(training_files);
     
@@ -76,6 +84,7 @@ int main(int argc, const char* argv[]) {
     settings.eval_interval = 500;
     settings.print_interval = 1000;
     settings.checkpoint_path = "connect4/models/best.dat";
+    settings.seed = seed;
 
     std::cout << "\ntraining on " << train_data.size() << " positions, testing on " << test_data.size() << "..." << std::endl;
 
@@ -88,15 +97,15 @@ int main(int argc, const char* argv[]) {
     // ── 3. benchmark the trained net as a search evaluator ────────────────────
     FFNN best = FFNN::from_file("connect4/models/best.dat");
 
-    C4FFNNAgent<width, height> ffnn_agent(10.0, "ffnn-10ms", best);
-    C4RandomAgent<width, height> random("random");
+    C4FFNNAgent<width, height> ffnn_agent(1.0, "ffnn-10ms", best);
+    C4RandomAgent<width, height> random("random", seed);
     C4NegamaxAgent<width, height> weak_negamax(1.0, "negamax-1ms");
 
     std::cout << "\n=== ffnn vs random ===" << std::endl;
-    c4_benchmark_agents<width, height>(ffnn_agent, random, 100, true);
+    c4_benchmark_agents<width, height>(ffnn_agent, random, 100, true, seed);
 
     std::cout << "\n=== ffnn vs negamax-1ms ===" << std::endl;
-    c4_benchmark_agents<width, height>(ffnn_agent, weak_negamax, 50, true);
+    c4_benchmark_agents<width, height>(ffnn_agent, weak_negamax, 50, true, seed);
 
     return 0;
 }
