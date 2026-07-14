@@ -41,12 +41,24 @@ int main(int argc, const char* argv[]) {
     std::srand(seed);
 
     // ── 1. get training data from pre computed runs ─────────────────────
-    // get all files that start with "training_data_w7_h6_" and end with ".bin" in the connect4 folder
+    // get all files that start with "training_data_w7_h6_" and end with ".bin" in the connect4 folder with the next number greater than or equal to a constant
+    const int threshold = 0;
     std::vector<std::string> training_files;
     for (const auto& entry : std::filesystem::directory_iterator("connect4")) {
         const std::string filename = entry.path().filename().string();
         if (filename.rfind("training_data_w7_h6_", 0) == 0 && filename.size() > 4 && filename.substr(filename.size() - 4) == ".bin") {
-            training_files.push_back(entry.path().string());
+            // number can be any length...
+            const size_t start_pos = std::string("training_data_w7_h6_").size();
+            const size_t end_pos = filename.find_first_of("_", start_pos);
+            if (end_pos != std::string::npos) {
+                const std::string number_str = filename.substr(start_pos, end_pos - start_pos);
+                const int number = std::stoi(number_str);
+                if (number >= threshold) {
+                    std::cout << "loading training data from " << entry.path().string() << std::endl;
+
+                    training_files.push_back(entry.path().string());
+                }
+            }
         }
     }
 
@@ -69,8 +81,8 @@ int main(int argc, const char* argv[]) {
 
     // ── 2. train the value net ────────────────────────────────────────────────
     // 42 board cells in, single tanh outcome prediction out
-    std::vector<size_t> shape = {width * height, 128, 64, 1};
-    std::vector<ActivationFunc> acts = {ActivationFunc::relu, ActivationFunc::relu, ActivationFunc::tan_h};
+    std::vector<size_t> shape = {width * height, 128, 64, 32, 16, 1};
+    std::vector<ActivationFunc> acts = {ActivationFunc::relu, ActivationFunc::relu, ActivationFunc::relu, ActivationFunc::relu, ActivationFunc::tan_h};
 
     FFNN model = FFNN::from_random_he_scaling(shape, acts);
     // l2 keeps the net from memorising the (noisy) outcome labels

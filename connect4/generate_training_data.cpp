@@ -23,8 +23,8 @@ DataSet get_training_data(const int num_games, const double teacher_ms) {
 
         if (!our_num_games) return DataSet::empty(width * height, 1);
 
-        C4NegamaxAgent<width, height> teacher_a(1, "teacher-a");
-        C4NegamaxAgent<width, height> teacher_b(1, "teacher-b");
+        C4NegamaxAgent<width, height> teacher_a(std::min(1.0, teacher_ms), "teacher-a");
+        C4NegamaxAgent<width, height> teacher_b(std::min(1.0, teacher_ms), "teacher-b");
         C4NegamaxAgent<width, height> evaluator(teacher_ms, "evaluator");
 
         return c4_get_training_data<width, height>(teacher_a, teacher_b, evaluator, our_num_games, 0.15f);

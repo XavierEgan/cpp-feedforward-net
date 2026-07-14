@@ -5,13 +5,12 @@ clang++ -std=c++23 -O3 -march=native -Xpreprocessor -fopenmp -I"$(brew --prefix 
 #include "../DataSet.hpp"
 #include "../AdamOptimiser.hpp"
 #include "../Trainer.hpp"
+#include "../LrSchedulers.hpp"
 #include <string>
 #include <filesystem>
 
 constexpr int IMG_SIZE = 784;
 constexpr int NUM_CLASSES = 10;
-
-constexpr int EVAL_INTERVAL = 1000;
 
 struct Settings {
     std::vector<size_t> ffnn_shape;
@@ -25,20 +24,27 @@ struct Settings {
     double lr;
     float noise;
     float chance_for_noise;
+
+    std::string family;
+    std::string tier;
+    std::string version;
 };
 
 int main() {
     Settings settings{
-        .ffnn_shape = {IMG_SIZE, 1024, 512, 255, 128, 64, 32, 16, NUM_CLASSES},
-        .ffnn_funcs = {ActivationFunc::relu, ActivationFunc::relu, ActivationFunc::relu, ActivationFunc::relu, ActivationFunc::relu, ActivationFunc::relu, ActivationFunc::relu, ActivationFunc::softmax},
+        .ffnn_shape = {IMG_SIZE, NUM_CLASSES},
+        .ffnn_funcs = {ActivationFunc::softmax},
         .cost_type = CostType::categorical_cross_entropy,
         .reg_type = RegularizationType::none,
-        .num_steps = 1000000,
+        .num_steps = 10000,
         .seed = 1,
         .batch_size = 1000,
         .lr = 0.0005,
         .noise = 1,
-        .chance_for_noise = 0.5
+        .chance_for_noise = 0.5,
+        .family = "MNIST",
+        .tier = "Nimbus",
+        .version = "1"
     };
 
     srand(settings.seed);
@@ -48,6 +54,7 @@ int main() {
 
     FFNN ffnn = FFNN::from_random_he_scaling(settings.ffnn_shape, settings.ffnn_funcs);
     AdamOptimiser optimiser = AdamOptimiser::from_ffnn(ffnn, settings.cost_type, settings.lr, settings.reg_type);
+    nn_utils::LRSchedulerLinear scheduler = nn_utils::LRSchedulerLinear::from_num_generation(1e-3, settings.lr, settings.num_steps);
 
     // randomly perturbs a fraction of the batch's columns towards white noise, see optimising.md
     auto add_noise = [&](Eigen::MatrixXf& inputs, Eigen::MatrixXf&) {
@@ -62,13 +69,13 @@ int main() {
     TrainSettings train_settings{
         .num_steps = settings.num_steps,
         .batch_size = settings.batch_size,
-        .eval_interval = EVAL_INTERVAL,
+        .eval_interval = 1000,
         .print_interval = 1,
         .seed = static_cast<unsigned int>(settings.seed),
-        .checkpoint_path = "MNIST/models/best.dat"
+        .checkpoint_path = "MNIST/models/" + settings.family + "-" + settings.tier + "-" + settings.version + ".dat"
     };
 
-    TrainResult result = train(ffnn, optimiser, train_dataset, train_settings,
+    TrainResult result = train_with_scheduler(ffnn, optimiser, scheduler, train_dataset, train_settings,
         [&](const FFNN& ffnn) { return nn_utils::argmax_accuracy(ffnn, test_dataset); },
         add_noise);
 
