@@ -32,18 +32,18 @@ struct Settings {
 
 int main() {
     Settings settings{
-        .ffnn_shape = {IMG_SIZE, NUM_CLASSES},
-        .ffnn_funcs = {ActivationFunc::softmax},
+        .ffnn_shape = {IMG_SIZE, 2048, 1024, NUM_CLASSES},
+        .ffnn_funcs = {ActivationFunc::relu, ActivationFunc::relu, ActivationFunc::softmax},
         .cost_type = CostType::categorical_cross_entropy,
         .reg_type = RegularizationType::none,
         .num_steps = 10000,
         .seed = 1,
         .batch_size = 1000,
-        .lr = 0.0005,
+        .lr = 0.003,
         .noise = 1,
-        .chance_for_noise = 0.5,
+        .chance_for_noise = 0.0,
         .family = "MNIST",
-        .tier = "Nimbus",
+        .tier = "Cumulonimbus",
         .version = "1"
     };
 
@@ -54,7 +54,7 @@ int main() {
 
     FFNN ffnn = FFNN::from_random_he_scaling(settings.ffnn_shape, settings.ffnn_funcs);
     AdamOptimiser optimiser = AdamOptimiser::from_ffnn(ffnn, settings.cost_type, settings.lr, settings.reg_type);
-    nn_utils::LRSchedulerLinear scheduler = nn_utils::LRSchedulerLinear::from_num_generation(1e-3, settings.lr, settings.num_steps);
+    nn_utils::LRSchedulerLinear scheduler = nn_utils::LRSchedulerLinear::from_num_generation(settings.lr, 1e-4, settings.num_steps);
 
     // randomly perturbs a fraction of the batch's columns towards white noise, see optimising.md
     auto add_noise = [&](Eigen::MatrixXf& inputs, Eigen::MatrixXf&) {
@@ -69,8 +69,8 @@ int main() {
     TrainSettings train_settings{
         .num_steps = settings.num_steps,
         .batch_size = settings.batch_size,
-        .eval_interval = 1000,
-        .print_interval = 1,
+        .eval_interval = 100,
+        .print_interval = 100,
         .seed = static_cast<unsigned int>(settings.seed),
         .checkpoint_path = "MNIST/models/" + settings.family + "-" + settings.tier + "-" + settings.version + ".dat"
     };

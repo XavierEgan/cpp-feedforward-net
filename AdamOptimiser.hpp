@@ -46,7 +46,41 @@ struct AdamOptimiser {
         }
 
         const float cost = ffnn.backward(minibatch, minibatch_targets, cost_type, ws);
+        apply_gradients();
 
+        return cost;
+    }
+
+    /*
+    like step(), but takes the output layer's error directly instead of deriving it from a
+    target/cost_type - e.g. a gradient backpropagated in from a downstream network (a frozen
+    critic/discriminator). requires ws.fwd to already hold minibatch's forward pass (call
+    ffnn.forward(minibatch, ws.fwd) first, e.g. as part of computing output_delta upstream).
+    does not return a cost since none is computed here.
+    */
+    void step_from_output_delta(const Eigen::MatrixXf& minibatch, const Eigen::MatrixXf& output_delta) {
+        if (minibatch.cols() <= 0) {
+            throw std::invalid_argument("step_from_output_delta: minibatch size must be non-zero");
+        }
+
+        ffnn.backward_from_output_delta(minibatch, output_delta, ws);
+        apply_gradients();
+    }
+
+    AdamOptimiser() = delete;
+private:
+    AdamOptimiser(FFNN& ffnn, CostType cost_type, RegularizationType reg_type, float reg_lambda, float lr, float beta1, float beta2, float epsilon)
+        : ffnn(ffnn), cost_type(cost_type), reg_type(reg_type), reg_lambda(reg_lambda), lr(lr), beta1(beta1), beta2(beta2), epsilon(epsilon), ws(BackpropWorkspace::from_shape(ffnn.network_shape)) {}
+
+    void adam_update(Eigen::MatrixXf& param, const Eigen::MatrixXf& grad, Eigen::MatrixXf& m, Eigen::MatrixXf& v, float alpha_t, float eps_hat) {
+        m = beta1 * m + (1.0f - beta1) * grad;
+        v = beta2 * v + (1.0f - beta2) * grad.cwiseAbs2();
+        param.array() -= alpha_t * m.array() / (v.array().sqrt() + eps_hat);
+    }
+
+    // consumes ws.weight_grad/bias_grad (already filled by whichever backward variant was
+    // called) and applies the Adam update to every layer
+    void apply_gradients() {
         // bias-correction folded into per-step scalars so no m_hat/v_hat temporaries are needed
         const float alpha_t = lr * std::sqrt(1.0f - std::pow(beta2, t)) / (1.0f - std::pow(beta1, t));
         const float eps_hat = epsilon * std::sqrt(1.0f - std::pow(beta2, t));
@@ -59,18 +93,5 @@ struct AdamOptimiser {
         }
 
         t++;
-
-        return cost;
-    }
-
-    AdamOptimiser() = delete;
-private:
-    AdamOptimiser(FFNN& ffnn, CostType cost_type, RegularizationType reg_type, float reg_lambda, float lr, float beta1, float beta2, float epsilon)
-        : ffnn(ffnn), cost_type(cost_type), reg_type(reg_type), reg_lambda(reg_lambda), lr(lr), beta1(beta1), beta2(beta2), epsilon(epsilon), ws(BackpropWorkspace::from_shape(ffnn.network_shape)) {}
-
-    void adam_update(Eigen::MatrixXf& param, const Eigen::MatrixXf& grad, Eigen::MatrixXf& m, Eigen::MatrixXf& v, float alpha_t, float eps_hat) {
-        m = beta1 * m + (1.0f - beta1) * grad;
-        v = beta2 * v + (1.0f - beta2) * grad.cwiseAbs2();
-        param.array() -= alpha_t * m.array() / (v.array().sqrt() + eps_hat);
     }
 };

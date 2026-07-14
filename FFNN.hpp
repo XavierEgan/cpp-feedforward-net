@@ -142,11 +142,6 @@ struct FFNN {
         const Eigen::MatrixXf& output = forward(input, ws.fwd);
         const float total_cost = nn_utils::cost(output, target, cost_type);
 
-        // activation of the layer feeding into layer l (the input itself for layer 1)
-        auto prev_activation = [&](size_t l) -> const Eigen::MatrixXf& {
-            return l == 1 ? input : ws.fwd.a.at(l - 2);
-        };
-
         // error in the output layer
         if (cost_type == CostType::binary_cross_entropy || cost_type == CostType::categorical_cross_entropy) {
             // special case where the derivative simplifies
@@ -156,22 +151,31 @@ struct FFNN {
             ws.delta.at(d - 2) = nn_utils::cost_derivative(output, target, cost_type).cwiseProduct(ws.activation_der.at(d - 2));
         }
 
-        ws.weight_grad.at(d - 2).noalias() = ws.delta.at(d - 2) * prev_activation(d - 1).transpose() / input.cols();
-        ws.bias_grad.at(d - 2) = ws.delta.at(d - 2).rowwise().mean();
-
-        // error in all earlier layers
-        for (size_t l = d - 2; l > 0; l--) {
-            // weight connecting this layer to the next, the error in the next layer,
-            // and the derivative of the activation function of this layer
-            nn_utils::activate_der(ws.fwd.z.at(l - 1), get_activation_func(l), ws.activation_der.at(l - 1));
-            ws.delta.at(l - 1).noalias() = get_weight(l + 1).transpose() * ws.delta.at(l);
-            ws.delta.at(l - 1).array() *= ws.activation_der.at(l - 1).array();
-
-            ws.weight_grad.at(l - 1).noalias() = ws.delta.at(l - 1) * prev_activation(l).transpose() / input.cols();
-            ws.bias_grad.at(l - 1) = ws.delta.at(l - 1).rowwise().mean();
-        }
+        propagate_delta(input, ws);
 
         return total_cost;
+    }
+
+    // like backward, but takes the output layer's error (dcost/dz for the output layer,
+    // i.e. already through the output activation's derivative) instead of deriving it from
+    // a target/cost_type. Useful when the "cost" isn't defined in terms of this network's own
+    // output against a target - e.g. backpropagating a discriminator's loss into a GAN generator.
+    // requires ws.fwd to already hold this input's forward pass (call forward(input, ws.fwd)
+    // first) since, unlike backward(), this never runs forward itself.
+    // fills ws.weight_grad / ws.bias_grad and ws.delta for every layer; does not return a cost.
+    void backward_from_output_delta(const Eigen::MatrixXf& input, const Eigen::MatrixXf& output_delta, BackpropWorkspace& ws) const {
+        ws.delta.at(depth() - 2) = output_delta;
+        propagate_delta(input, ws);
+    }
+
+    Eigen::MatrixXf backward_to_input(const Eigen::MatrixXf& input, const Eigen::MatrixXf& target, CostType cost_type, BackpropWorkspace& ws) const {
+        backward(input, target, cost_type, ws);
+        return get_weight(1).transpose() * ws.delta.at(0);
+    }
+
+    Eigen::MatrixXf backward_to_input(const Eigen::MatrixXf& input, const Eigen::MatrixXf& output_delta, BackpropWorkspace& ws) const {
+        backward_from_output_delta(input, output_delta, ws);
+        return get_weight(1).transpose() * ws.delta.at(0);
     }
 
     void write_to_file(const std::string& filename) const {
@@ -258,4 +262,32 @@ struct FFNN {
 private:
     FFNN(std::vector<size_t> network_shape, std::vector<ActivationFunc> activation_functions)
         : network_shape(std::move(network_shape)), activation_functions(std::move(activation_functions)) {}
+
+    // given ws.delta.at(depth() - 2) already set to the output layer's error, fills
+    // weight_grad/bias_grad for the output layer and propagates delta back through every
+    // earlier layer, filling their gradients too. Shared tail end of backward() and
+    // backward_from_output_delta().
+    void propagate_delta(const Eigen::MatrixXf& input, BackpropWorkspace& ws) const {
+        const size_t d = depth();
+
+        // activation of the layer feeding into layer l (the input itself for layer 1)
+        auto prev_activation = [&](size_t l) -> const Eigen::MatrixXf& {
+            return l == 1 ? input : ws.fwd.a.at(l - 2);
+        };
+
+        ws.weight_grad.at(d - 2).noalias() = ws.delta.at(d - 2) * prev_activation(d - 1).transpose() / input.cols();
+        ws.bias_grad.at(d - 2) = ws.delta.at(d - 2).rowwise().mean();
+
+        // error in all earlier layers
+        for (size_t l = d - 2; l > 0; l--) {
+            // weight connecting this layer to the next, the error in the next layer,
+            // and the derivative of the activation function of this layer
+            nn_utils::activate_der(ws.fwd.z.at(l - 1), get_activation_func(l), ws.activation_der.at(l - 1));
+            ws.delta.at(l - 1).noalias() = get_weight(l + 1).transpose() * ws.delta.at(l);
+            ws.delta.at(l - 1).array() *= ws.activation_der.at(l - 1).array();
+
+            ws.weight_grad.at(l - 1).noalias() = ws.delta.at(l - 1) * prev_activation(l).transpose() / input.cols();
+            ws.bias_grad.at(l - 1) = ws.delta.at(l - 1).rowwise().mean();
+        }
+    }
 };

@@ -21,3 +21,13 @@ Backprop gets run backwards through M to G on the difference between the predict
 There is nothing encouraging G to generate coherent images, it will likely learn seemingly random jibberish that happens to strongly activate the predictor towards the answer.
 
 ### Results
+As expected, we get random jibberish.
+![alt text](1.png)
+
+this does not look like a 9 at all!
+
+## Idea 2:
+Same as Idea 1
+but train another small model to distinguish jibberish from not, 
+training data for it is the mnist images and random noise. Random noise gets labeled 0, mnist images get labeled 1
+
