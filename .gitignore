@@ -9,6 +9,8 @@ test
 .DS_Store
 *.dat
 *.csv
+*.bin
+*.gz
 
 # CMake build directories have dotted config files (CMakeCache.txt, *.cmake) that would
 # otherwise slip through the "anything with a dot" rule above

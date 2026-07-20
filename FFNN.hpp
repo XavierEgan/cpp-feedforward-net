@@ -128,19 +128,28 @@ struct FFNN {
         return forward(input, ws);
     }
 
-    // runs forward, fills ws.weight_grad / ws.bias_grad, and returns the average cost over the batch
-    float backward(const Eigen::MatrixXf& input, const Eigen::MatrixXf& target, CostType cost_type, BackpropWorkspace& ws) const {
+    // pure backprop: requires ws.fwd and ws.delta.at(depth() - 2) (the output layer's error,
+    // i.e. dcost/dz already through the output activation's derivative) to already be set -
+    // e.g. by calling forward(input, ws.fwd) and then either fill_output_delta() or your own
+    // externally-derived delta.
+    // fills ws.weight_grad / ws.bias_grad and ws.delta for every layer.
+    void backward(const Eigen::MatrixXf& input, BackpropWorkspace& ws) const {
+        propagate_delta(input, ws);
+    }
+
+    // fills ws.delta.at(depth() - 2) with the output layer's error derived from target/cost_type.
+    // requires ws.fwd to already hold this input's forward pass (call forward(input, ws.fwd) first).
+    void fill_output_delta(const Eigen::MatrixXf& target, CostType cost_type, BackpropWorkspace& ws) const {
         if (cost_type == CostType::binary_cross_entropy && activation_functions.back() != ActivationFunc::sigmoid) {
-            throw std::invalid_argument("backward: binary_cross_entropy cost requires sigmoid activation in output layer");
+            throw std::invalid_argument("fill_output_delta: binary_cross_entropy cost requires sigmoid activation in output layer");
         }
 
         if (cost_type == CostType::categorical_cross_entropy && activation_functions.back() != ActivationFunc::softmax) {
-            throw std::invalid_argument("backward: categorical_cross_entropy cost requires softmax activation in output layer");
+            throw std::invalid_argument("fill_output_delta: categorical_cross_entropy cost requires softmax activation in output layer");
         }
 
         const size_t d = depth();
-        const Eigen::MatrixXf& output = forward(input, ws.fwd);
-        const float total_cost = nn_utils::cost(output, target, cost_type);
+        const Eigen::MatrixXf& output = ws.fwd.a.at(d - 2);
 
         // error in the output layer
         if (cost_type == CostType::binary_cross_entropy || cost_type == CostType::categorical_cross_entropy) {
@@ -150,31 +159,23 @@ struct FFNN {
             nn_utils::activate_der(ws.fwd.z.at(d - 2), get_activation_func(d - 1), ws.activation_der.at(d - 2));
             ws.delta.at(d - 2) = nn_utils::cost_derivative(output, target, cost_type).cwiseProduct(ws.activation_der.at(d - 2));
         }
+    }
 
-        propagate_delta(input, ws);
+    // convenience: forward, derive the output delta from target/cost_type, backprop, and
+    // return the average cost over the batch. equivalent to forward + fill_output_delta + backward.
+    float backward_and_loss(const Eigen::MatrixXf& input, const Eigen::MatrixXf& target, CostType cost_type, BackpropWorkspace& ws) const {
+        const Eigen::MatrixXf& output = forward(input, ws.fwd);
+        const float total_cost = nn_utils::cost(output, target, cost_type);
+
+        fill_output_delta(target, cost_type, ws);
+        backward(input, ws);
 
         return total_cost;
     }
 
-    // like backward, but takes the output layer's error (dcost/dz for the output layer,
-    // i.e. already through the output activation's derivative) instead of deriving it from
-    // a target/cost_type. Useful when the "cost" isn't defined in terms of this network's own
-    // output against a target - e.g. backpropagating a discriminator's loss into a GAN generator.
-    // requires ws.fwd to already hold this input's forward pass (call forward(input, ws.fwd)
-    // first) since, unlike backward(), this never runs forward itself.
-    // fills ws.weight_grad / ws.bias_grad and ws.delta for every layer; does not return a cost.
-    void backward_from_output_delta(const Eigen::MatrixXf& input, const Eigen::MatrixXf& output_delta, BackpropWorkspace& ws) const {
-        ws.delta.at(depth() - 2) = output_delta;
-        propagate_delta(input, ws);
-    }
-
-    Eigen::MatrixXf backward_to_input(const Eigen::MatrixXf& input, const Eigen::MatrixXf& target, CostType cost_type, BackpropWorkspace& ws) const {
-        backward(input, target, cost_type, ws);
-        return get_weight(1).transpose() * ws.delta.at(0);
-    }
-
-    Eigen::MatrixXf backward_to_input(const Eigen::MatrixXf& input, const Eigen::MatrixXf& output_delta, BackpropWorkspace& ws) const {
-        backward_from_output_delta(input, output_delta, ws);
+    // gradient of the loss w.r.t. this network's input, given ws already holds a completed
+    // backward pass (ws.delta.at(0) filled, e.g. via backward() or backward_and_loss())
+    Eigen::MatrixXf grad_wrt_input(const BackpropWorkspace& ws) const {
         return get_weight(1).transpose() * ws.delta.at(0);
     }
 
