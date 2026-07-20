@@ -29,5 +29,33 @@ this does not look like a 9 at all!
 ## Idea 2:
 Same as Idea 1
 but train another small model to distinguish jibberish from not, 
-training data for it is the mnist images and random noise. Random noise gets labeled 0, mnist images get labeled 1
+training data for it is the mnist images and random noise. Random noise gets labeled 0, mnist images get labeled 1.
+
+Then use this to train the M to output [0.1, 0.1, ...] for anything that looks like gibberish
+
+TRAIN jibberish model to predict if an image is a valid digit, or noise/jibberish.
+
+MAIN LOOP:
+    MAKE a batch of one hot vectors with slight noise added
+
+    FORWARD through the image generator (generates a bunch of images)
+    FORWARD the result through the MNIST predictor
+    BACKWARDS through MNIST predictor
+    BACKWARDS through the image generator using gradients from the MNIST predictor
+    OPTIMISE the image generator (NOT the MNIST predictor)
+
+    FORWARD generated images through jibberish model
+    FORWARD generated images through MNIST predictor
+    BACKWARDS through MNIST predictor with jibberish model outputs as the label
+    OPTIMISE MNIST predictor
+
+
+### Expected problems
+Because im training M to output [0.1, 0.1, ...] on random noise, model performance may degrade.
+image generator may still find way to hack the adversary
+
+### Result
+![alt text](2.png)
+
+
 

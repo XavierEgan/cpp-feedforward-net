@@ -45,7 +45,7 @@ struct AdamOptimiser {
             throw std::invalid_argument("step: minibatch size must be non-zero");
         }
 
-        const float cost = ffnn.backward(minibatch, minibatch_targets, cost_type, ws);
+        const float cost = ffnn.backward_and_loss(minibatch, minibatch_targets, cost_type, ws);
         apply_gradients();
 
         return cost;
@@ -63,7 +63,8 @@ struct AdamOptimiser {
             throw std::invalid_argument("step_from_output_delta: minibatch size must be non-zero");
         }
 
-        ffnn.backward_from_output_delta(minibatch, output_delta, ws);
+        ws.delta.at(ffnn.depth() - 2) = output_delta;
+        ffnn.backward(minibatch, ws);
         apply_gradients();
     }
 

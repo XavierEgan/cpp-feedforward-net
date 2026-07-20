@@ -49,7 +49,7 @@ void check(const std::string& name, std::vector<size_t> shape, std::vector<Activ
         target = Eigen::MatrixXf::Random(shape.back(), 5);
     }
 
-    ffnn.backward(input, target, cost_type, ws);
+    ffnn.backward_and_loss(input, target, cost_type, ws);
 
     const float reg_lambda = 1e-2f;
     float max_rel_err = 0.0f;
